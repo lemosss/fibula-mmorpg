@@ -1,0 +1,752 @@
+/* style.css — interface compacta estilo Tibia clássico */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #181614;
+  --panel: #2b2722;
+  --panel-border: #4d4337;
+  --gold: #c9a45a;
+  --text: #d8d0c0;
+  --accent: #7a9c4f;
+  --sidebar-w: 184px;
+  --dock-w: 178px;           /* coluna de encaixe esquerda */
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 12px;
+  user-select: none;
+  overflow: hidden;
+}
+
+.hidden { display: none !important; }
+
+button {
+  background: linear-gradient(#5d4f3c, #443a2c);
+  border: 1px solid #6d5d45;
+  border-radius: 3px;
+  color: #f0e6d2;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 11px;
+}
+button:hover { filter: brightness(1.2); }
+button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: #45596d; }
+
+/* ============================== LOGIN ============================== */
+
+#login-screen {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #262019 0%, #12100d 75%);
+  z-index: 200;
+}
+
+.login-box {
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 28px 34px;
+  width: 340px;
+  box-shadow: 0 0 40px #000;
+}
+.login-box h1 {
+  text-align: center; color: var(--gold);
+  letter-spacing: 8px; font-size: 30px; text-shadow: 2px 2px 0 #000;
+}
+.login-box .subtitle { text-align: center; color: #8a8070; margin: 4px 0 20px; }
+.login-box label { display: block; margin: 10px 0 3px; color: #a89a80; }
+.login-box input, .login-box select {
+  width: 100%;
+  background: #1c1916;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 13px;
+  outline: none;
+}
+.login-box input:focus { border-color: var(--gold); }
+.login-buttons { display: flex; gap: 10px; margin-top: 18px; }
+.login-buttons button { flex: 1; padding: 8px 14px; font-size: 12px; }
+#login-error { color: #e66; margin-top: 12px; min-height: 16px; text-align: center; }
+.login-box .hint { color: #6f655a; margin-top: 10px; font-size: 10px; text-align: center; }
+
+/* ============================== JOGO ============================== */
+
+#game-screen {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+}
+
+#game-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ---------------- colunas de encaixe (dock) esquerda/direita -------------- */
+#dock-left, #dock-left2 {
+  flex: 0 0 var(--dock-w);
+  width: var(--dock-w);
+  background: var(--panel);
+  border-right: 2px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* recolhida: vira uma tira fina só com a setinha de reabrir */
+#dock-left.collapsed, #dock-left2.collapsed {
+  flex-basis: 18px;
+  width: 18px;
+}
+#dock-left.collapsed .dock-body,
+#dock-left2.collapsed .dock-body { display: none; }
+
+.dock-head {
+  display: flex;
+  justify-content: flex-end;
+  background: #221e1a;
+  border-bottom: 1px solid var(--panel-border);
+}
+.collapsed > .dock-head { justify-content: center; }
+.dock-collapse {
+  padding: 1px 6px;
+  font-size: 13px;
+  line-height: 1.2;
+  background: #322c24;
+  border: 1px solid #4d4337;
+  color: var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.dock-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+}
+.dock-body:empty::before {
+  content: "arraste\A janelas\A para ca";
+  white-space: pre;
+  display: block;
+  color: #5a5046;
+  font-size: 10px;
+  text-align: center;
+  padding: 14px 2px;
+  opacity: .7;
+}
+/* coluna direita vive dentro da #sidebar (já com padding/gap próprios) */
+#dock-right { display: flex; flex-direction: column; }
+#dock-right.collapsed .dock-body { display: none; }
+#dock-right-body { padding: 0; }
+
+/* realce do destino enquanto se arrasta uma janela */
+.dock-target { background: rgba(201, 164, 90, .12); border-radius: 4px; }
+
+/* botão de recolher a coluna direita, no canto do minimapa (estilo Tibia) */
+#dock-right-toggle {
+  position: absolute;
+  top: 0; left: 0;
+  z-index: 6;
+  padding: 0 6px;
+}
+
+#canvas-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+}
+
+#game-canvas {
+  /* 480x352 interno; escala para caber mantendo a proporção */
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  display: block;
+}
+
+/* camada de texto nítido (nomes, barras, números) em resolução nativa —
+   fica POR CIMA do mapa pixelado, sem o upscale nearest-neighbor */
+#fx-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+#dead-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(60, 0, 0, .55);
+}
+#dead-text {
+  background: var(--panel);
+  border: 2px solid #844;
+  padding: 18px 30px;
+  border-radius: 6px;
+  color: #f0d0d0;
+  font-size: 14px;
+  max-width: 420px;
+  text-align: center;
+}
+
+/* ------------------- janelas flutuantes (skills/hotkeys) ----------- */
+
+.float-window {
+  position: absolute;
+  top: 12px; left: 12px;
+  width: 250px;
+  max-height: calc(100% - 24px);
+  background: rgba(43, 39, 34, .97);
+  border: 2px solid var(--panel-border);
+  border-radius: 5px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+}
+#hotkeys-window { left: auto; right: 12px; width: 280px; }
+
+.fw-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 9px;
+  color: var(--gold); font-size: 11px; font-weight: bold;
+  text-transform: uppercase; letter-spacing: 1px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.fw-close { padding: 1px 7px; font-size: 10px; }
+
+#skills-body { padding: 8px 10px; overflow-y: auto; }
+.skill-row {
+  display: flex; align-items: center; gap: 6px;
+  margin: 3px 0; font-size: 11px;
+}
+.sk-name { width: 86px; color: #a89a80; }
+.sk-level { width: 30px; text-align: right; color: var(--gold); font-weight: bold; }
+.sk-bar {
+  flex: 1; height: 6px;
+  background: #15120f; border: 1px solid #000; border-radius: 2px;
+  overflow: hidden;
+}
+.sk-fill { display: block; height: 100%; background: linear-gradient(#8a6cc8, #5a4292); }
+.skill-sep { border-top: 1px solid #3a342c; margin: 6px 0; }
+.skill-static { display: flex; justify-content: space-between; font-size: 11px;
+  margin: 2px 0; }
+.skill-static .lbl { color: #a89a80; }
+.skill-static .val { color: var(--text); }
+
+.hk-hint { padding: 6px 10px; color: #8a8070; font-size: 10px; }
+#hotkeys-body { padding: 4px 10px; overflow-y: scroll; }
+.hk-row {
+  display: flex; align-items: center; gap: 5px; margin: 2px 0;
+}
+.hk-key { width: 30px; color: var(--gold); font-size: 10px; font-weight: bold; }
+.hk-row input[type=text] {
+  flex: 1; min-width: 0;
+  background: #1c1916; border: 1px solid var(--panel-border);
+  color: var(--text); padding: 3px 5px; font-size: 10px; border-radius: 2px;
+}
+.hk-row input.hk-item { flex: 0 0 44px; }
+.hk-footer { padding: 7px 10px; border-top: 1px solid var(--panel-border);
+  text-align: right; }
+
+/* ------------------- janelas de loot (corpos) ----------------------- */
+
+/* empilhadas na sidebar, abaixo da mochila (estilo Tibia) */
+#containers-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.container-panel {
+  width: 100%;
+  background: #221e1a;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+.cont-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 7px;
+  color: var(--gold); font-size: 10px; font-weight: bold;
+  border-bottom: 1px solid var(--panel-border);
+}
+.cont-close { padding: 0 6px; font-size: 10px; }
+.hdr-btns { display: flex; gap: 3px; }
+.cont-min { padding: 0 6px; font-size: 10px; }
+
+/* battle list (bichos na tela, clicáveis) */
+#battle-list {
+  overflow-y: scroll;
+  overflow-x: hidden;
+  min-height: 24px;
+  max-height: 300px;
+  height: 96px;
+  padding: 2px;
+}
+.battle-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.battle-row:hover { background: #38322a; }
+.battle-row.targeted {
+  background: #5a2424;
+  outline: 1px solid #c84646;
+}
+.battle-row canvas { width: 20px; height: 20px; image-rendering: pixelated; }
+.battle-row .bt-info { flex: 1; min-width: 0; }
+.battle-row .bt-name {
+  font-size: 10px; color: #e8e0c8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.battle-row.is-player .bt-name { color: #ff9070; }
+.battle-row .bt-bar {
+  height: 4px; margin-top: 1px;
+  background: #15120f; border: 1px solid #000; border-radius: 2px;
+  overflow: hidden;
+}
+.battle-row .bt-fill { height: 100%; }
+.battle-empty {
+  color: #6f655a; font-size: 10px; text-align: center; padding: 8px 0;
+}
+
+/* janela de skills na sidebar (mesma cara da mochila) */
+#skills-body {
+  padding: 7px 9px;
+  overflow-y: scroll;        /* barra sempre visível (layout estável) */
+  overflow-x: hidden;
+  min-height: 40px;
+  max-height: 420px;
+}
+.cont-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 36px);
+  gap: 3px;
+  padding: 4px;
+  justify-content: start;
+  align-content: start;
+  min-height: 44px;
+  max-height: 460px;
+  /* scroll SEMPRE visível: a barra reserva espaço, os slots não pulam */
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+/* barra de redimensionar (toda a borda de baixo, igual ao chat) */
+.win-resizer {
+  height: 6px;
+  cursor: ns-resize;
+  background: transparent;
+}
+.win-resizer:hover { background: var(--gold); opacity: .5; }
+.cont-header { cursor: grab; }
+.cont-header:active { cursor: grabbing; }
+/* janela sendo movida entre colunas: só opacidade (sem tracejado poluindo) */
+.container-panel.dragging { opacity: .55; }
+
+/* alvo de soltura do drag-and-drop: tracejado SÓ no slot exato de destino */
+.drop-hover { outline: 2px dashed var(--gold) !important; outline-offset: -2px; }
+/* janela arrancada da sidebar e fixada na tela (posição livre) */
+.container-panel.floating {
+  z-index: 40;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .6);
+  background: var(--panel);
+}
+.cont-grid .inv-slot { width: 36px; height: 36px; }
+.cont-grid .inv-slot canvas { width: 34px; height: 34px; }
+
+/* janela da mochila começa com ~4 linhas (dá p/ puxar p/ cima ou p/ baixo) */
+#inv-grid { height: 184px; }
+.cont-grid .inv-slot { width: 38px; height: 38px; background: #221c16; }
+.cont-grid .inv-slot canvas { width: 36px; height: 36px; }
+.cont-empty {
+  grid-column: 1/-1; color: #6f655a; font-size: 10px;
+  text-align: center; padding: 8px 0;
+}
+
+/* ------------------------------ chat ------------------------------ */
+
+#chat-panel {
+  height: 158px;
+  min-height: 72px;
+  max-height: 60vh;
+  background: var(--panel);
+  border-top: 2px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+}
+
+/* divisor arrastável entre o jogo e o chat (redimensiona os dois) */
+#chat-resizer {
+  height: 6px;
+  margin-top: -2px;
+  cursor: ns-resize;
+  background: transparent;
+  flex: 0 0 auto;
+}
+#chat-resizer:hover { background: var(--gold); opacity: .5; }
+#chat-tabs {
+  display: flex;
+  background: #221e1a;
+  border-bottom: 1px solid var(--panel-border);
+}
+.chat-tab {
+  background: none; border: none;
+  border-right: 1px solid #38322a;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: #8a8070;
+  padding: 4px 12px;
+  font-size: 10px;
+  position: relative;
+}
+.chat-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.chat-tab.unread::after {
+  content: "";
+  position: absolute; top: 4px; right: 4px;
+  width: 6px; height: 6px; border-radius: 3px;
+  background: #e8a33d;
+}
+
+#chat-log {
+  flex: 1;
+  overflow-y: scroll;          /* barra sempre visível (layout estável) */
+  padding: 5px 9px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+#chat-log .c-say    { color: #f3eecf; }
+#chat-log .c-npc    { color: #7fd4ee; }
+#chat-log .c-server { color: #e8a33d; }
+#chat-log .c-info   { color: #b8b0a0; }
+#chat-log .c-loot   { color: #8ed864; }
+#chat-log .c-look   { color: #6ee06e; }
+#chat-log .c-error  { color: #e66; }
+#chat-log .c-pm     { color: #6ea8e0; }
+
+#chat-input-row { border-top: 1px solid var(--panel-border); }
+#chat-input {
+  width: 100%;
+  background: #1c1916;
+  border: none;
+  color: var(--text);
+  padding: 6px 9px;
+  outline: none;
+  font-size: 12px;
+}
+
+/* ----------------------------- sidebar ---------------------------- */
+
+#sidebar {
+  width: var(--sidebar-w);
+  flex: 0 0 var(--sidebar-w);
+  background: var(--panel);
+  border-left: 2px solid var(--panel-border);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  overflow-x: hidden;        /* nunca rolar para os lados */
+}
+
+#minimap-box {
+  position: relative;
+  width: 150px;
+  margin: 0 auto;
+}
+#minimap {
+  display: block;
+  width: 150px; height: 150px;
+  border: 1px solid #000;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+
+/* rosa dos ventos sobre o minimapa (canto superior direito) */
+#compass {
+  position: absolute;
+  top: 3px; right: 3px;
+  display: grid;
+  grid-template-columns: repeat(3, 15px);
+  grid-auto-rows: 15px;
+  gap: 1px;
+  opacity: .82;
+}
+#compass:hover { opacity: 1; }
+#compass button {
+  width: 15px; height: 15px;
+  padding: 0;
+  font-size: 8px; line-height: 1;
+  background: rgba(34, 30, 26, .9);
+  border: 1px solid #4d4337;
+  border-radius: 2px;
+  color: #cbbd9d;
+}
+#compass button:hover { border-color: var(--gold); color: var(--gold); }
+#compass #mm-center { color: #9be36e; }
+
+#mm-expand {
+  position: absolute;
+  bottom: 3px; right: 3px;
+  width: 18px; height: 18px;
+  padding: 0; font-size: 10px; line-height: 1;
+  background: rgba(34, 30, 26, .9);
+  opacity: .82;
+}
+#mm-expand:hover { opacity: 1; }
+
+.bar-row { display: flex; align-items: center; gap: 4px; }
+.bar-label { width: 18px; color: #a89a80; font-size: 9px; }
+.bar {
+  position: relative; flex: 1; height: 12px;
+  background: #15120f; border: 1px solid #000; border-radius: 2px;
+  overflow: hidden;
+}
+.bar-fill { height: 100%; width: 0%; transition: width .25s; }
+.bar-fill.hp  { background: linear-gradient(#d44, #922); }
+.bar-fill.mp  { background: linear-gradient(#46c, #228); }
+.bar-text {
+  position: absolute; inset: 0; text-align: center;
+  font-size: 9px; line-height: 12px; color: #fff;
+  text-shadow: 1px 1px 0 #000;
+}
+
+/* equipamento em cruz com os controles de combate ABAIXO (sem espremer) */
+#equip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  align-items: center;
+}
+#equip-grid {
+  display: grid;
+  grid-template-areas:
+    "nk hd bp"
+    "lh ar rh"
+    "rg lg am"
+    "cp bt ad";
+  gap: 4px;
+  justify-content: center;
+}
+#eq-cap, #eq-atkdef {
+  width: 40px;
+  align-self: center;
+  text-align: center;
+  font-size: 8px;
+  line-height: 1.5;
+  color: #cbbd9d;
+}
+#eq-cap b, #eq-atkdef b { color: var(--gold); }
+
+#ui-level { color: var(--gold); margin-left: 5px; }
+
+.equip-slot, .inv-slot {
+  width: 40px; height: 40px;
+  background: #1c1916;
+  border: 1px solid #4d4337;
+  border-radius: 3px;
+  position: relative;
+  cursor: pointer;
+}
+.equip-slot:hover, .inv-slot:hover { border-color: var(--gold); }
+.equip-slot canvas, .inv-slot canvas {
+  width: 38px; height: 38px; image-rendering: pixelated;
+}
+.equip-slot.empty::after {
+  content: attr(title);
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #4a4138; font-size: 7px; text-align: center;
+}
+
+#combat-bar .cont-header { padding: 2px 7px; font-size: 10px; }
+#combat-controls {
+  display: flex;
+  flex-direction: row;        /* linha própria, independente do equipamento */
+  gap: 3px;
+  justify-content: center;
+  padding: 4px;
+}
+#combat-controls button {
+  width: 30px; height: 24px; padding: 0; font-size: 12px; line-height: 1;
+  opacity: .55;
+}
+#combat-controls button.active {
+  opacity: 1; border-color: var(--gold); box-shadow: 0 0 6px #c9a45a88;
+}
+#btn-pvp { font-size: 8px; font-weight: bold; }
+#btn-follow { font-size: 13px; }
+#btn-pvp.pvp-on {
+  opacity: 1;
+  background: linear-gradient(#8a3030, #5d1f1f);
+  border-color: #c05050;
+  box-shadow: 0 0 7px #e0505088;
+  color: #ffd0d0;
+}
+#btn-follow.follow-on {
+  opacity: 1;
+  background: linear-gradient(#2f5d30, #1f3d20);
+  border-color: #50c060;
+  box-shadow: 0 0 7px #50e06088;
+  color: #d0ffd0;
+}
+#btn-logout { background: linear-gradient(#5d3030, #442020); border-color: #6d4545; }
+
+.equip-slot.bag-open { border-color: var(--gold); }
+.inv-slot.selected { border-color: #e8a33d; box-shadow: 0 0 5px #e8a33d88; }
+
+.slot-count {
+  position: absolute; right: 2px; bottom: 1px;
+  font-size: 9px; color: #fff; text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+}
+
+#inv-actions { display: flex; gap: 3px; }
+#inv-actions button { flex: 1; padding: 4px 2px; font-size: 10px; }
+
+#window-buttons { display: flex; gap: 3px; margin-top: auto; }
+#window-buttons button { flex: 1; padding: 5px 2px; font-size: 10px; }
+
+/* ----------------------------- modais ---------------------------- */
+
+#map-modal, #help-modal, #trade-modal, #qty-modal {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, .55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 60;
+}
+#qty-modal { z-index: 110; }     /* acima do drag-ghost/containers */
+.qty-box {
+  width: 248px;
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 6px;
+  display: flex; flex-direction: column;
+}
+#qty-x { flex: 0; padding: 2px 9px; }
+.qty-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+#qty-preview {
+  display: flex; align-items: center; gap: 8px;
+  color: #b8b0a0; font-size: 11px;
+}
+#qty-preview canvas { width: 34px; height: 34px; image-rendering: pixelated; }
+#qty-input {
+  background: #1c1916; border: 1px solid var(--panel-border);
+  border-radius: 3px; color: var(--text);
+  padding: 7px 9px; font-size: 16px; text-align: center; outline: none;
+}
+#qty-input:focus { border-color: var(--gold); }
+#qty-slider { width: 100%; accent-color: var(--gold); }
+.qty-quick { display: flex; gap: 4px; }
+.qty-quick button { flex: 1; padding: 5px 0; font-size: 10px; }
+.qty-footer {
+  display: flex; gap: 8px; padding: 10px 14px;
+  border-top: 1px solid var(--panel-border);
+}
+.qty-footer button { flex: 1; }
+.map-box {
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 6px;
+  display: flex; flex-direction: column;
+}
+#map-close, #help-close { flex: 0; padding: 2px 9px; }
+#bigmap {
+  display: block; margin: 8px;
+  border: 1px solid #000;
+  image-rendering: pixelated;
+  cursor: pointer;
+  max-width: min(80vw, 78vh);
+  max-height: min(80vw, 78vh);
+}
+.map-hint { text-align: center; color: #8a8070; font-size: 10px; padding: 0 8px 8px; }
+
+.help-box { max-width: 520px; }
+.help-text { color: #b8b0a0; font-size: 11px; line-height: 1.8; padding: 12px 16px; }
+
+.trade-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px;
+  color: var(--gold); font-weight: bold;
+  border-bottom: 1px solid var(--panel-border);
+}
+#trade-close { flex: 0; padding: 2px 9px; }
+
+.trade-box {
+  width: 420px; max-height: 76vh;
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 6px;
+  display: flex; flex-direction: column;
+}
+.trade-tabs { display: flex; }
+.trade-tabs button {
+  flex: 1; border-radius: 0; border: none;
+  border-bottom: 2px solid transparent;
+  background: #221e1a;
+}
+.trade-tabs button.active {
+  background: var(--panel);
+  border-bottom-color: var(--gold);
+  color: var(--gold);
+}
+#trade-list { overflow-y: scroll; padding: 8px; flex: 1; }
+
+.trade-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #38322a;
+}
+.trade-row canvas { width: 28px; height: 28px; image-rendering: pixelated; }
+.trade-row .t-name { flex: 1; font-size: 11px; }
+.trade-row .t-price { color: var(--gold); width: 64px; text-align: right; font-size: 11px; }
+.trade-row .t-have { color: #8a8070; width: 48px; text-align: right; font-size: 10px; }
+.trade-row button { flex: 0; padding: 3px 9px; font-size: 10px; }
+.trade-row.t-disabled { opacity: .38; filter: grayscale(.8); }
+.trade-row .t-equipped {
+  color: #e8a33d; font-size: 9px; border: 1px solid #e8a33d66;
+  border-radius: 3px; padding: 1px 4px;
+}
+
+.trade-footer {
+  padding: 8px 14px;
+  border-top: 1px solid var(--panel-border);
+}
+#trade-gold { color: var(--gold); font-weight: bold; }
+
+/* fantasma do drag & drop (segue o cursor) */
+#drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 100;
+  opacity: .85;
+  filter: drop-shadow(1px 2px 3px #000);
+}
+#drag-ghost canvas { width: 36px; height: 36px; image-rendering: pixelated; }
+
+/* scrollbars discretas */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #1c1916; }
+::-webkit-scrollbar-thumb { background: #4d4337; border-radius: 4px; }

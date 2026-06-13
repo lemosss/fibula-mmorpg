@@ -1,0 +1,23 @@
+# banco de dados local (contas/personagens) — não versionar
+data/fibula.db
+data/*.db
+data/*.db-journal
+data/*.sqlite
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# logs e temporários
+*.log
+tools/_*.py
+
+# editor / ferramentas locais
+.claude/
+.vscode/
+.idea/
+*.swp
+.DS_Store

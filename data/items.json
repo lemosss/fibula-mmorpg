@@ -1,0 +1,46 @@
+{
+  "_comment": "Definições de itens. Chave = id. type: gold|weapon|shield|helmet|armor|legs|boots|necklace|ring|ammo|backpack|potion|food|tool|misc. atk=ataque, def=defesa de escudo, arm=armadura, weight=peso em oz (CAP), wclass=skill da arma (sword/club/axe/distance), range=alcance (distância), needsAmmo=tipo de munição, ammoType=o que esta munição é, capacity=slots extras de mochila, effect=passivo de anel/amuleto, heal_hp/heal_mp=poções, food_hp=comida. priceBuy=preço que o NPC vende, priceSell=preço que o NPC paga.",
+
+  "1":  {"name": "moeda de ouro",      "sprite": "gold",           "type": "gold",   "stackable": true, "weight": 0.1, "priceSell": 1},
+
+  "10": {"name": "espada",             "sprite": "sword",          "type": "weapon", "wclass": "sword", "atk": 14, "weight": 35,  "priceBuy": 85,  "priceSell": 25},
+  "11": {"name": "clava",              "sprite": "club",           "type": "weapon", "wclass": "club",  "atk": 7,  "weight": 25,  "priceBuy": 8,   "priceSell": 2},
+  "12": {"name": "machado",            "sprite": "axe",            "type": "weapon", "wclass": "axe",   "atk": 12, "weight": 30,  "priceBuy": 50,  "priceSell": 15},
+  "13": {"name": "adaga",              "sprite": "dagger",         "type": "weapon", "wclass": "sword", "atk": 8,  "weight": 9,   "priceBuy": 12,  "priceSell": 3},
+  "14": {"name": "espada larga",       "sprite": "broad_sword",    "type": "weapon", "wclass": "sword", "atk": 18, "weight": 41,  "priceSell": 160},
+  "15": {"name": "machado de batalha", "sprite": "battle_axe",     "type": "weapon", "wclass": "axe",   "atk": 16, "weight": 50,  "priceSell": 90},
+  "16": {"name": "espada de fogo",     "sprite": "fire_sword",     "type": "weapon", "wclass": "sword", "atk": 22, "weight": 23,  "priceSell": 1500},
+  "17": {"name": "arco",               "sprite": "bow",            "type": "weapon", "wclass": "distance", "atk": 0,  "range": 6, "needsAmmo": "arrow", "weight": 31, "priceBuy": 150, "priceSell": 50},
+  "18": {"name": "lanca",              "sprite": "spear",          "type": "weapon", "wclass": "distance", "atk": 10, "range": 3, "throwable": true, "stackable": true, "weight": 20, "priceBuy": 9, "priceSell": 3},
+  "19": {"name": "flecha",             "sprite": "arrow",          "type": "ammo",   "ammoType": "arrow", "atk": 12, "stackable": true, "weight": 0.7, "priceBuy": 3, "priceSell": 1},
+
+  "20": {"name": "capacete de couro",  "sprite": "leather_helmet", "type": "helmet", "arm": 1,  "weight": 22,  "priceBuy": 12,  "priceSell": 4},
+  "21": {"name": "armadura de couro",  "sprite": "leather_armor",  "type": "armor",  "arm": 4,  "weight": 60,  "priceBuy": 35,  "priceSell": 12},
+  "22": {"name": "calcas de couro",    "sprite": "leather_legs",   "type": "legs",   "arm": 1,  "weight": 18,  "priceBuy": 15,  "priceSell": 5},
+  "23": {"name": "botas de couro",     "sprite": "leather_boots",  "type": "boots",  "arm": 1,  "weight": 9,   "priceBuy": 10,  "priceSell": 3},
+  "24": {"name": "cota de malha",      "sprite": "chain_armor",    "type": "armor",  "arm": 6,  "weight": 100, "priceBuy": 200, "priceSell": 70},
+  "25": {"name": "armadura de placas", "sprite": "plate_armor",    "type": "armor",  "arm": 8,  "weight": 120, "priceBuy": 400, "priceSell": 150},
+
+  "30": {"name": "escudo de madeira",  "sprite": "wooden_shield",  "type": "shield", "def": 14, "weight": 40, "priceBuy": 25,  "priceSell": 8},
+  "31": {"name": "escudo de latao",    "sprite": "brass_shield",   "type": "shield", "def": 16, "weight": 60, "priceBuy": 120, "priceSell": 40},
+  "32": {"name": "escudo do dragao",   "sprite": "dragon_shield",  "type": "shield", "def": 24, "weight": 69, "priceSell": 900},
+
+  "33": {"name": "amuleto de protecao", "sprite": "amulet",        "type": "necklace", "arm": 2, "weight": 7, "priceBuy": 300, "priceSell": 100},
+  "34": {"name": "anel da vida",        "sprite": "ring",          "type": "ring",     "effect": "fed", "weight": 1, "priceSell": 250},
+
+  "40": {"name": "pocao de vida",      "sprite": "potion_red",     "type": "potion", "heal_hp": 60, "weight": 18, "priceBuy": 45, "priceSell": 10},
+  "41": {"name": "pocao de mana",      "sprite": "potion_blue",    "type": "potion", "heal_mp": 50, "weight": 18, "priceBuy": 55, "priceSell": 12},
+
+  "50": {"name": "queijo",             "sprite": "cheese",         "type": "food", "food_hp": 6,  "weight": 4,  "priceBuy": 4, "priceSell": 1},
+  "51": {"name": "carne",              "sprite": "meat",           "type": "food", "food_hp": 10, "weight": 13, "priceBuy": 6, "priceSell": 2},
+  "52": {"name": "pao",                "sprite": "bread",          "type": "food", "food_hp": 5,  "weight": 5,  "priceBuy": 3, "priceSell": 1},
+  "53": {"name": "peixe",              "sprite": "fish",           "type": "food", "food_hp": 8,  "weight": 5,  "priceSell": 2},
+
+  "70": {"name": "mochila",            "sprite": "backpack",       "type": "backpack", "capacity": 24, "weight": 18, "container": true, "priceBuy": 10, "priceSell": 3},
+  "71": {"name": "mochila grande",     "sprite": "backpack_big",   "type": "backpack", "capacity": 32, "weight": 22, "container": true, "priceSell": 200},
+
+  "72": {"name": "corda",              "sprite": "rope",           "type": "tool", "tool": "rope",    "weight": 31, "priceBuy": 50, "priceSell": 15},
+  "73": {"name": "vara de pesca",      "sprite": "fishing_rod",    "type": "tool", "tool": "rod",     "weight": 30, "priceBuy": 80, "priceSell": 25},
+
+  "90": {"name": "corpo",              "sprite": "corpse",         "type": "misc", "pickable": false, "weight": 200, "container": true}
+}

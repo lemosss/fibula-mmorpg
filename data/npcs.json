@@ -1,0 +1,53 @@
+{
+  "_comment": "NPCs da cidade. pos=[x,y] precisa bater com o layout do genmap.py. NPCs respondem a quem fala perto deles (raio 3). 'heal': cura quem disser curar/heal. 'shop': sells = ids que o NPC vende (pelo priceBuy do item), buys = ids que o NPC compra (pelo priceSell).",
+
+  "Padre Elio": {
+    "sprite": "npc_priest",
+    "pos": [25, 39],
+    "heal": true,
+    "dialog": {
+      "greet": "Bem-vindo ao templo, %s. Se estiver ferido, diga CURAR.",
+      "farewell": "Que os deuses te protejam, %s.",
+      "keywords": [
+        {"k": ["curar", "heal", "cura"], "r": "__HEAL__"},
+        {"k": ["templo", "temple"], "r": "Este templo eh um refugio. Monstros jamais entram na cidade."},
+        {"k": ["ajuda", "help"], "r": "Diga CURAR e tratarei seus ferimentos sem custo. Compre equipamento com Tobias, ao leste daqui."},
+        {"k": ["nome"], "r": "Sou o Padre Elio, guardiao deste templo."}
+      ]
+    }
+  },
+
+  "Tobias": {
+    "sprite": "npc_merchant",
+    "pos": [42, 41],
+    "dialog": {
+      "greet": "Ola, %s! Diga COMERCIAR para ver minhas mercadorias.",
+      "farewell": "Volte sempre, %s!",
+      "keywords": [
+        {"k": ["comerciar", "trade", "comprar", "vender", "negociar"], "r": "__TRADE__"},
+        {"k": ["ajuda", "help"], "r": "Eu compro e vendo equipamentos, pocoes e comida. Diga COMERCIAR."},
+        {"k": ["nome"], "r": "Tobias, o mercador. A melhor loja da cidade... e a unica!"}
+      ]
+    },
+    "shop": {
+      "sells": [10, 11, 12, 13, 17, 18, 19, 20, 21, 22, 23, 24, 30, 31, 33,
+                40, 41, 50, 51, 52, 70, 72, 73],
+      "buys":  [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+                25, 30, 31, 32, 33, 34, 40, 41, 53, 70, 71, 72, 73]
+    }
+  },
+
+  "Guarda Marcus": {
+    "sprite": "npc_guard",
+    "pos": [46, 48],
+    "dialog": {
+      "greet": "Alto la, %s! Alem deste portao ha monstros. Va preparado.",
+      "farewell": "Cuidado la fora, %s.",
+      "keywords": [
+        {"k": ["monstros", "monstro", "cacar", "caca"], "r": "Ratos e cobras logo adiante sao faceis. Lobos na floresta. Trolls ao norte, orcs bem a leste, e nao chegue perto do cemiterio sem uma boa arma!"},
+        {"k": ["ajuda", "help"], "r": "Pergunte sobre os MONSTROS la fora, ou volte ao templo se estiver ferido."},
+        {"k": ["nome"], "r": "Guarda Marcus, protetor do portao leste."}
+      ]
+    }
+  }
+}

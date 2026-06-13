@@ -1,0 +1,129 @@
+{
+  "_comment": "Definições de monstros. hp, exp, dmg=[min,max] por golpe, armor=redução de dano, stepMs=velocidade de andar (ms por tile), atkMs=intervalo de ataque, aggro=raio de agressividade em tiles. loot: lista de {item: id, chance: 0..1, max: quantidade máxima (sorteada 1..max)}.",
+
+  "rat": {
+    "name": "rato", "sprite": "rat",
+    "hp": 20, "exp": 5, "dmg": [1, 8], "armor": 0,
+    "stepMs": 500, "atkMs": 2000, "aggro": 6,
+    "loot": [
+      {"item": 1,  "chance": 0.50, "max": 4},
+      {"item": 50, "chance": 0.30}
+    ]
+  },
+
+  "snake": {
+    "name": "cobra", "sprite": "snake",
+    "hp": 15, "exp": 10, "dmg": [1, 10], "armor": 0,
+    "stepMs": 600, "atkMs": 2000, "aggro": 5,
+    "loot": [
+      {"item": 1, "chance": 0.20, "max": 2}
+    ]
+  },
+
+  "wolf": {
+    "name": "lobo", "sprite": "wolf",
+    "hp": 25, "exp": 18, "dmg": [2, 12], "armor": 0,
+    "stepMs": 380, "atkMs": 2000, "aggro": 7,
+    "loot": [
+      {"item": 51, "chance": 0.60}
+    ]
+  },
+
+  "troll": {
+    "name": "troll", "sprite": "troll",
+    "hp": 50, "exp": 20, "dmg": [2, 14], "armor": 1,
+    "stepMs": 550, "atkMs": 2000, "aggro": 7,
+    "loot": [
+      {"item": 1,  "chance": 0.60, "max": 12},
+      {"item": 11, "chance": 0.15},
+      {"item": 51, "chance": 0.30},
+      {"item": 23, "chance": 0.05}
+    ]
+  },
+
+  "orc": {
+    "name": "orc", "sprite": "orc",
+    "hp": 70, "exp": 25, "dmg": [4, 18], "armor": 2,
+    "stepMs": 450, "atkMs": 2000, "aggro": 7,
+    "loot": [
+      {"item": 1,  "chance": 0.70, "max": 20},
+      {"item": 13, "chance": 0.10},
+      {"item": 20, "chance": 0.08},
+      {"item": 10, "chance": 0.04}
+    ]
+  },
+
+  "skeleton": {
+    "name": "esqueleto", "sprite": "skeleton",
+    "hp": 50, "exp": 35, "dmg": [5, 20], "armor": 2,
+    "stepMs": 500, "atkMs": 2000, "aggro": 7,
+    "loot": [
+      {"item": 1,  "chance": 0.50, "max": 15},
+      {"item": 12, "chance": 0.06},
+      {"item": 30, "chance": 0.08}
+    ]
+  },
+
+  "bat": {
+    "name": "morcego", "sprite": "bat",
+    "hp": 30, "exp": 12, "dmg": [1, 10], "armor": 0,
+    "stepMs": 300, "atkMs": 2000, "aggro": 7,
+    "loot": [
+      {"item": 1, "chance": 0.30, "max": 5}
+    ]
+  },
+
+  "spider": {
+    "name": "aranha das cavernas", "sprite": "spider",
+    "hp": 45, "exp": 30, "dmg": [4, 16], "armor": 1,
+    "stepMs": 400, "atkMs": 2000, "aggro": 7,
+    "loot": [
+      {"item": 1,  "chance": 0.45, "max": 18},
+      {"item": 40, "chance": 0.05}
+    ]
+  },
+
+  "ghoul": {
+    "name": "carnical", "sprite": "ghoul",
+    "hp": 100, "exp": 85, "dmg": [6, 30], "armor": 3,
+    "stepMs": 450, "atkMs": 2000, "aggro": 7,
+    "loot": [
+      {"item": 1,  "chance": 0.70, "max": 30},
+      {"item": 40, "chance": 0.10},
+      {"item": 15, "chance": 0.05},
+      {"item": 34, "chance": 0.03},
+      {"item": 14, "chance": 0.02}
+    ]
+  },
+
+  "dragon": {
+    "name": "dragao", "sprite": "dragon",
+    "hp": 800, "exp": 700, "dmg": [15, 80], "armor": 8,
+    "stepMs": 400, "atkMs": 2000, "aggro": 8,
+    "loot": [
+      {"item": 1,  "chance": 1.00, "max": 100},
+      {"item": 41, "chance": 0.30},
+      {"item": 14, "chance": 0.15},
+      {"item": 15, "chance": 0.15},
+      {"item": 25, "chance": 0.10},
+      {"item": 32, "chance": 0.08}
+    ]
+  },
+
+  "dragon_lord": {
+    "name": "lorde dragao", "sprite": "dragon_lord",
+    "hp": 1900, "exp": 2100, "dmg": [25, 120], "armor": 12,
+    "stepMs": 380, "atkMs": 2000, "aggro": 8,
+    "loot": [
+      {"item": 1,  "chance": 1.00, "max": 100},
+      {"item": 41, "chance": 0.40},
+      {"item": 40, "chance": 0.30},
+      {"item": 25, "chance": 0.15},
+      {"item": 14, "chance": 0.15},
+      {"item": 32, "chance": 0.12},
+      {"item": 71, "chance": 0.10},
+      {"item": 16, "chance": 0.08},
+      {"item": 34, "chance": 0.08}
+    ]
+  }
+}

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Fibula — MMORPG 2D</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ====================== TELA DE LOGIN ====================== -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>FIBULA</h1>
+    <p class="subtitle">um MMORPG 2D inspirado em Tibia</p>
+
+    <label>Conta</label>
+    <input id="in-account" maxlength="20" autocomplete="username" placeholder="ex: lemos">
+    <label>Senha</label>
+    <input id="in-password" type="password" maxlength="50" autocomplete="current-password" placeholder="minimo 4 caracteres">
+    <div id="register-extra" class="hidden">
+      <label>Nome do personagem</label>
+      <input id="in-charname" maxlength="20" placeholder="ex: Sir Lemos">
+      <label>Vocacao</label>
+      <select id="in-vocation">
+        <option value="knight">Cavaleiro — corpo a corpo, muito HP</option>
+        <option value="paladin">Paladino — distancia (arco/lanca)</option>
+        <option value="sorcerer">Feiticeiro — onda de fogo, muita mana</option>
+        <option value="druid">Druida — curas fortes, muita mana</option>
+      </select>
+    </div>
+
+    <div class="login-buttons">
+      <button id="btn-login">Entrar</button>
+      <button id="btn-register" class="secondary">Criar conta</button>
+    </div>
+    <div id="login-error"></div>
+    <p class="hint">A primeira conta criada vira administrador (/help no chat).</p>
+  </div>
+</div>
+
+<!-- ====================== TELA DO JOGO ====================== -->
+<div id="game-screen" class="hidden">
+  <!-- colunas de encaixe ESQUERDA (até 2, recolhíveis). Começam recolhidas. -->
+  <div id="dock-left" class="dock collapsible collapsed">
+    <div class="dock-head"><button class="dock-collapse" data-dock="dock-left"
+         title="Recolher/expandir">‹</button></div>
+    <div class="dock-body" id="dock-left-body"></div>
+  </div>
+  <div id="dock-left2" class="dock collapsible collapsed">
+    <div class="dock-head"><button class="dock-collapse" data-dock="dock-left2"
+         title="Recolher/expandir">‹</button></div>
+    <div class="dock-body" id="dock-left2-body"></div>
+  </div>
+
+  <div id="game-main">
+    <div id="canvas-wrap">
+      <canvas id="game-canvas" width="480" height="352"></canvas>
+      <canvas id="fx-canvas"></canvas>
+      <div id="dead-overlay" class="hidden">
+        <div id="dead-text"></div>
+      </div>
+
+      <!-- janela de HOTKEYS (toggle) -->
+      <div id="hotkeys-window" class="float-window hidden">
+        <div class="fw-header"><span>Hotkeys</span>
+          <button class="fw-close" data-close="hotkeys-window">✕</button></div>
+        <div class="hk-hint">Texto = fala/magia (ex: exura). Item = id do item
+          para usar (ex: 40 poçao). Deixe vazio para desativar.</div>
+        <div id="hotkeys-body"></div>
+        <div class="hk-footer"><button id="hk-save">Salvar</button></div>
+      </div>
+    </div>
+
+    <div id="chat-panel">
+      <div id="chat-resizer" title="Arraste para redimensionar o chat"></div>
+      <div id="chat-tabs">
+        <button class="chat-tab active" data-tab="default">Default</button>
+        <button class="chat-tab" data-tab="server">Server Log</button>
+        <button class="chat-tab" data-tab="loot">Loot</button>
+        <button class="chat-tab" data-tab="npc">NPC</button>
+        <button class="chat-tab" data-tab="pm">PM</button>
+      </div>
+      <div id="chat-log"></div>
+      <div id="chat-input-row">
+        <input id="chat-input" maxlength="200"
+               placeholder="Enter para falar... ('oi' perto de um NPC, /help, /pm nome msg)">
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================== SIDEBAR (estilo Tibia) ====================== -->
+  <div id="sidebar">
+    <div id="minimap-box">
+      <canvas id="minimap" width="150" height="150"
+              title="Clique para andar até o lugar"></canvas>
+      <!-- rosa dos ventos: move a visão do minimapa -->
+      <div id="compass">
+        <button data-mm="-10,-10" title="Noroeste">↖</button>
+        <button data-mm="0,-10"   title="Norte">▲</button>
+        <button data-mm="10,-10"  title="Nordeste">↗</button>
+        <button data-mm="-10,0"   title="Oeste">◀</button>
+        <button id="mm-center"    title="Seguir jogador">●</button>
+        <button data-mm="10,0"    title="Leste">▶</button>
+        <button data-mm="-10,10"  title="Sudoeste">↙</button>
+        <button data-mm="0,10"    title="Sul">▼</button>
+        <button data-mm="10,10"   title="Sudeste">↘</button>
+      </div>
+      <button id="mm-expand" title="Expandir mapa">⛶</button>
+      <!-- recolher/expandir a coluna direita (perto do minimapa, estilo Tibia) -->
+      <button id="dock-right-toggle" class="dock-collapse" data-dock="dock-right"
+              title="Recolher/expandir os paineis">›</button>
+    </div>
+
+    <div class="bar-row"><span class="bar-label">HP</span>
+      <div class="bar"><div id="bar-hp" class="bar-fill hp"></div>
+        <span id="bar-hp-text" class="bar-text"></span></div></div>
+    <div class="bar-row"><span class="bar-label">MP</span>
+      <div class="bar"><div id="bar-mp" class="bar-fill mp"></div>
+        <span id="bar-mp-text" class="bar-text"></span></div></div>
+
+    <!-- coluna de encaixe DIREITA: janelas movíveis vivem aqui dentro -->
+    <div id="dock-right" class="dock">
+    <div class="dock-body" id="dock-right-body">
+
+    <!-- equipamento em cruz + controles de combate (estilo Tibia) -->
+    <div id="equip-window" class="container-panel movable">
+      <div class="cont-header"><span>Equipamento <span id="ui-level">Lv 1</span></span>
+        <span class="hdr-btns">
+          <button class="cont-min" data-min="equip-body" title="Minimizar">—</button>
+        </span></div>
+      <div id="equip-body">
+        <div id="equip-grid">
+          <div class="equip-slot" data-eslot="necklace" title="Necklace" style="grid-area:nk"></div>
+          <div class="equip-slot" data-eslot="helmet"   title="Head"     style="grid-area:hd"></div>
+          <div class="equip-slot" data-eslot="backpack" title="Backpack" style="grid-area:bp"></div>
+          <div class="equip-slot" data-eslot="shield"   title="Left Hand"  style="grid-area:lh"></div>
+          <div class="equip-slot" data-eslot="armor"    title="Armor"    style="grid-area:ar"></div>
+          <div class="equip-slot" data-eslot="weapon"   title="Right Hand" style="grid-area:rh"></div>
+          <div class="equip-slot" data-eslot="ring"     title="Ring"     style="grid-area:rg"></div>
+          <div class="equip-slot" data-eslot="legs"     title="Legs"     style="grid-area:lg"></div>
+          <div class="equip-slot" data-eslot="ammo"     title="Ammo"     style="grid-area:am"></div>
+          <div id="eq-cap"    style="grid-area:cp" title="Capacity">Cap<br>0</div>
+          <div class="equip-slot" data-eslot="boots" title="Boots" style="grid-area:bt"></div>
+          <div id="eq-atkdef" style="grid-area:ad" title="Ataque / Defesa">Atk: 0<br>Def: 0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- barra de combate: movível, com minimizar (sem fechar) -->
+    <div id="combat-bar" class="container-panel movable">
+      <div class="cont-header"><span>Combate</span>
+        <span class="hdr-btns">
+          <button class="cont-min" data-min="combat-controls" title="Minimizar">—</button>
+        </span></div>
+      <div id="combat-controls">
+        <button id="st-attack"   title="Full ataque">⚔</button>
+        <button id="st-balanced" title="Balanceado">⚖</button>
+        <button id="st-defense"  title="Full defesa">🛡</button>
+        <button id="btn-pvp"     title="Modo PvP">PvP</button>
+        <button id="btn-follow"  title="Seguir o alvo selecionado">🧍</button>
+        <button id="btn-battle2" title="Lista de batalha">☰</button>
+      </div>
+    </div>
+
+    <!-- janela da mochila: mesma cara das janelas de loot -->
+    <div id="inv-window" class="container-panel movable">
+      <div class="cont-header"><span id="inv-title">mochila</span>
+        <span class="hdr-btns">
+          <button class="cont-min" data-min="inv-grid" title="Minimizar">—</button>
+          <button id="inv-close" class="cont-close" title="Fechar">✕</button>
+        </span></div>
+      <div id="inv-grid" class="cont-grid"></div>
+      <div class="win-resizer" data-resize="inv-grid"></div>
+    </div>
+
+    <!-- BATTLE LIST: bichos/players na tela, clique para atacar -->
+    <div id="battle-window" class="container-panel movable">
+      <div class="cont-header"><span>Battle</span>
+        <span class="hdr-btns">
+          <button class="cont-min" data-min="battle-list" title="Minimizar">—</button>
+          <button class="cont-close fw-close" data-close="battle-window"
+                  title="Fechar">✕</button>
+        </span></div>
+      <div id="battle-list"></div>
+      <div class="win-resizer" data-resize="battle-list"></div>
+    </div>
+
+    <!-- janela de SKILLS (botão Skills abre/fecha) -->
+    <div id="skills-window" class="container-panel movable hidden">
+      <div class="cont-header"><span>Habilidades</span>
+        <span class="hdr-btns">
+          <button class="cont-min" data-min="skills-body" title="Minimizar">—</button>
+          <button class="cont-close fw-close" data-close="skills-window"
+                  title="Fechar">✕</button>
+        </span></div>
+      <div id="skills-body"></div>
+      <div class="win-resizer" data-resize="skills-body"></div>
+    </div>
+    </div><!-- /#dock-right-body -->
+    </div><!-- /#dock-right -->
+
+    <div id="inv-actions" class="hidden">
+      <button id="btn-use">Usar</button>
+      <button id="btn-equip">Equipar</button>
+      <button id="btn-drop">Dropar</button>
+    </div>
+
+    <!-- janelas de loot (corpos/mochilas abertos), empilhadas como no Tibia -->
+    <div id="containers-stack"></div>
+
+    <div id="window-buttons">
+      <button id="btn-battle"  title="Lista de batalha">Battle</button>
+      <button id="btn-skills"  title="Habilidades">Skills</button>
+      <button id="btn-hotkeys" title="Configurar hotkeys">Hotkeys</button>
+      <button id="btn-help"    title="Ajuda dos controles">?</button>
+      <button id="btn-logout"  title="Sair do jogo (bloqueado em combate)">Sair</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====================== MAPA EXPANDIDO ====================== -->
+<div id="map-modal" class="hidden">
+  <div class="map-box">
+    <div class="trade-header"><span>Mapa de Fibula</span>
+      <button id="map-close">✕</button></div>
+    <canvas id="bigmap" width="500" height="500"
+            title="Clique para andar até o lugar"></canvas>
+    <div class="map-hint">clique em qualquer lugar para andar até lá · ESC fecha</div>
+  </div>
+</div>
+
+<!-- ====================== AJUDA ====================== -->
+<div id="help-modal" class="hidden">
+  <div class="map-box help-box">
+    <div class="trade-header"><span>Controles</span>
+      <button id="help-close">✕</button></div>
+    <div class="help-text">
+      WASD/setas: andar (2 teclas = diagonal) · clique no chão/minimapa: autowalk<br>
+      clique: atacar / falar / abrir corpo · clique na escada: descer/subir<br>
+      clique direito: olhar (mapa e itens) · G: pegar do chão · ESC: parar/fechar<br>
+      <b>arraste</b> itens: mochila ↔ equipamento ↔ chão ↔ corpo<br>
+      duplo clique: usar/equipar · buraco: pisa e cai · corda no rope spot: sobe<br>
+      magias: <b>exura</b> · <b>utani hur</b> · <b>exori</b> (cavaleiro) ·
+      <b>exori con</b> (paladino) · <b>exevo flam</b> (feiticeiro) ·
+      <b>exura gran</b> (druida)<br>
+      arco precisa de flechas no slot Ammo · lança se arremessa (alcance 3)<br>
+      pesca: use a vara perto da água · /help para comandos
+    </div>
+  </div>
+</div>
+
+<!-- ====================== JANELA DE COMÉRCIO ====================== -->
+<div id="trade-modal" class="hidden">
+  <div class="trade-box">
+    <div class="trade-header"><span id="trade-npc-name">NPC</span>
+      <button id="trade-close">✕</button></div>
+    <div class="trade-tabs">
+      <button id="tab-buy" class="active">Comprar</button>
+      <button id="tab-sell">Vender</button>
+    </div>
+    <div id="trade-list"></div>
+    <div class="trade-footer">Seu ouro: <span id="trade-gold">0</span> 🪙</div>
+  </div>
+</div>
+
+<!-- ====================== SELETOR DE QUANTIDADE (split) ====================== -->
+<div id="qty-modal" class="hidden">
+  <div class="qty-box">
+    <div class="trade-header"><span>Mover quantos?</span>
+      <button id="qty-x">✕</button></div>
+    <div class="qty-body">
+      <div id="qty-preview"></div>
+      <input id="qty-input" type="number" min="1" value="1">
+      <input id="qty-slider" type="range" min="1" value="1">
+      <div class="qty-quick">
+        <button data-q="1">1</button>
+        <button data-q="10">10</button>
+        <button data-q="50">50</button>
+        <button data-q="100">100</button>
+        <button data-q="max">Tudo</button>
+      </div>
+    </div>
+    <div class="qty-footer">
+      <button id="qty-ok">Confirmar</button>
+      <button id="qty-cancel" class="secondary">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="drag-ghost" class="hidden"></div>
+
+<script src="js/net.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/input.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
