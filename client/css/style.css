@@ -88,10 +88,38 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;          /* p/ o controle de dock na divisa */
 }
 
+/* setinhas na LINHA DA DIVISA (esq. e dir. do mapa) p/ adicionar/remover coluna */
+.dock-ctrl {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#dock-ctrl-left { left: 0; }
+#dock-ctrl-right { right: 0; }
+.dock-ctrl button {
+  width: 15px; height: 24px;
+  padding: 0;
+  font-size: 13px; line-height: 1;
+  background: rgba(34, 30, 26, .9);
+  border: 1px solid var(--panel-border);
+  color: var(--gold);
+  cursor: pointer;
+}
+#dock-ctrl-left button { border-left: none; border-radius: 0 4px 4px 0; }
+#dock-ctrl-right button { border-right: none; border-radius: 4px 0 0 4px; }
+.dock-ctrl button:hover { filter: brightness(1.35); }
+.dock-ctrl button:disabled { opacity: .25; cursor: default; }
+
 /* ---------------- colunas de encaixe (dock) esquerda/direita -------------- */
-#dock-left, #dock-left2 {
+/* colunas ESQUERDA: a 1a fixa, as demais adicionáveis pelo ＋ */
+.dock-col {
   flex: 0 0 var(--dock-w);
   width: var(--dock-w);
   background: var(--panel);
@@ -100,31 +128,8 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
   flex-direction: column;
   overflow: hidden;
 }
-/* recolhida: vira uma tira fina só com a setinha de reabrir */
-#dock-left.collapsed, #dock-left2.collapsed {
-  flex-basis: 18px;
-  width: 18px;
-}
-#dock-left.collapsed .dock-body,
-#dock-left2.collapsed .dock-body { display: none; }
-
-.dock-head {
-  display: flex;
-  justify-content: flex-end;
-  background: #221e1a;
-  border-bottom: 1px solid var(--panel-border);
-}
-.collapsed > .dock-head { justify-content: center; }
-.dock-collapse {
-  padding: 1px 6px;
-  font-size: 13px;
-  line-height: 1.2;
-  background: #322c24;
-  border: 1px solid #4d4337;
-  color: var(--gold);
-  border-radius: 3px;
-  cursor: pointer;
-}
+/* colunas DIREITAS: borda do lado de dentro (esquerda), espelhando as da esquerda */
+.dock-col[data-side="right"] { border-right: none; border-left: 2px solid var(--panel-border); }
 
 .dock-body {
   display: flex;
@@ -136,30 +141,43 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
   flex: 1;
 }
 .dock-body:empty::before {
-  content: "arraste\A janelas\A para ca";
+  content: "arraste uma\A janela aqui";
   white-space: pre;
   display: block;
   color: #5a5046;
   font-size: 10px;
   text-align: center;
-  padding: 14px 2px;
-  opacity: .7;
+  padding: 16px 4px;
+  opacity: .6;
 }
-/* coluna direita vive dentro da #sidebar (já com padding/gap próprios) */
-#dock-right { display: flex; flex-direction: column; }
-#dock-right.collapsed .dock-body { display: none; }
-#dock-right-body { padding: 0; }
+
+/* coluna PRINCIPAL (dentro da sidebar, abaixo do minimapa): a sidebar já dá o
+   padding/scroll, então aqui é sem padding e sem esticar */
+#dock-right-body { padding: 0; flex: 0 0 auto; min-height: 40px; }
 
 /* realce do destino enquanto se arrasta uma janela */
 .dock-target { background: rgba(201, 164, 90, .12); border-radius: 4px; }
 
-/* botão de recolher a coluna direita, no canto do minimapa (estilo Tibia) */
-#dock-right-toggle {
+/* zoom do minimapa (+/−), canto superior esquerdo do minimapa */
+#mm-zoom {
   position: absolute;
   top: 0; left: 0;
-  z-index: 6;
-  padding: 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
+#mm-zoom button {
+  width: 20px; height: 18px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  background: rgba(34, 30, 26, .85);
+  border: 1px solid #4d4337;
+  color: var(--gold);
+  border-radius: 3px;
+  cursor: pointer;
+}
+#mm-zoom button:hover { filter: brightness(1.3); }
 
 #canvas-wrap {
   position: relative;
@@ -167,7 +185,11 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #000;
+  /* faixas ao redor do mapa = continuação do material da interface (não preto),
+     com leve profundidade (sombra interna) p/ integrar o mapa ao cliente */
+  background: linear-gradient(150deg, #322c24 0%, #241f1a 55%, #1a1612 100%);
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, .6),
+              inset 0 0 0 2px rgba(0, 0, 0, .35);
   overflow: hidden;
 }
 
@@ -235,17 +257,24 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
 
 #skills-body { padding: 8px 10px; overflow-y: auto; }
 .skill-row {
-  display: flex; align-items: center; gap: 6px;
-  margin: 3px 0; font-size: 11px;
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 6px 0; font-size: 11px;
 }
-.sk-name { width: 86px; color: #a89a80; }
-.sk-level { width: 30px; text-align: right; color: var(--gold); font-weight: bold; }
+.sk-head { display: flex; justify-content: space-between; align-items: baseline; }
+.sk-name { color: #a89a80; }
+.sk-level { color: var(--gold); font-weight: bold; }
+/* barra na linha de baixo, largura cheia, com a % escrita por cima */
 .sk-bar {
-  flex: 1; height: 6px;
-  background: #15120f; border: 1px solid #000; border-radius: 2px;
+  position: relative; width: 100%; height: 13px;
+  background: #15120f; border: 1px solid #000; border-radius: 3px;
   overflow: hidden;
 }
 .sk-fill { display: block; height: 100%; background: linear-gradient(#8a6cc8, #5a4292); }
+.sk-pct {
+  position: absolute; inset: 0;
+  text-align: center; line-height: 13px;
+  font-size: 9px; color: #f0e8d8; text-shadow: 1px 1px 0 #000;
+}
 .skill-sep { border-top: 1px solid #3a342c; margin: 6px 0; }
 .skill-static { display: flex; justify-content: space-between; font-size: 11px;
   margin: 2px 0; }
@@ -560,7 +589,6 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
 }
 #eq-cap b, #eq-atkdef b { color: var(--gold); }
 
-#ui-level { color: var(--gold); margin-left: 5px; }
 
 .equip-slot, .inv-slot {
   width: 40px; height: 40px;
@@ -582,22 +610,21 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
 }
 
 #combat-bar .cont-header { padding: 2px 7px; font-size: 10px; }
+/* quadradinhos só de ícone: 4 por linha preenchendo a largura, depois quebram */
 #combat-controls {
-  display: flex;
-  flex-direction: row;        /* linha própria, independente do equipamento */
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 3px;
-  justify-content: center;
   padding: 4px;
 }
 #combat-controls button {
-  width: 30px; height: 24px; padding: 0; font-size: 12px; line-height: 1;
-  opacity: .55;
+  height: 25px; padding: 0; font-size: 12px; line-height: 1;   /* só ícone */
 }
+/* posturas/alvo: escurecidos quando inativos (ativo = classe .active) */
+#st-attack, #st-balanced, #st-defense, #btn-pvp, #btn-follow { opacity: .55; }
 #combat-controls button.active {
   opacity: 1; border-color: var(--gold); box-shadow: 0 0 6px #c9a45a88;
 }
-#btn-pvp { font-size: 8px; font-weight: bold; }
-#btn-follow { font-size: 13px; }
 #btn-pvp.pvp-on {
   opacity: 1;
   background: linear-gradient(#8a3030, #5d1f1f);
@@ -631,7 +658,7 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
 
 /* ----------------------------- modais ---------------------------- */
 
-#map-modal, #help-modal, #trade-modal, #qty-modal {
+#map-modal, #trade-modal, #qty-modal {
   position: fixed; inset: 0;
   background: rgba(0, 0, 0, .55);
   display: flex; align-items: center; justify-content: center;
@@ -672,7 +699,7 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
   border-radius: 6px;
   display: flex; flex-direction: column;
 }
-#map-close, #help-close { flex: 0; padding: 2px 9px; }
+#map-close { flex: 0; padding: 2px 9px; }
 #bigmap {
   display: block; margin: 8px;
   border: 1px solid #000;
@@ -682,9 +709,6 @@ button.secondary { background: linear-gradient(#3c4a5d, #2c3744); border-color: 
   max-height: min(80vw, 78vh);
 }
 .map-hint { text-align: center; color: #8a8070; font-size: 10px; padding: 0 8px 8px; }
-
-.help-box { max-width: 520px; }
-.help-text { color: #b8b0a0; font-size: 11px; line-height: 1.8; padding: 12px 16px; }
 
 .trade-header {
   display: flex; justify-content: space-between; align-items: center;

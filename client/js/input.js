@@ -131,7 +131,7 @@ const Drag = {
     const eqSlot = close(".equip-slot");
     const onCanvas = !!close("#canvas-wrap");
     const tile = onCanvas ? Render.screenToTile(ev.clientX, ev.clientY) : null;
-    const inCols = !!close("#sidebar, #dock-left, #dock-left2, #dock-right");
+    const inCols = !!close(".dock-col, #sidebar");
     const ctrl = ev.ctrlKey;
     const { count, stackable } = this.srcStack(src);
     // slot da mochila equipada COM uma bag = guardar dentro (nunca substituir)
@@ -259,18 +259,21 @@ const Input = {
       if (!me) return;
       const t = Render.screenToTile(ev.clientX, ev.clientY);
       if (!t) return;                          // clicou na faixa preta
-      // criatura no tile -> arrasto de EMPURRAR (1 SQM). Clique sem mover
-      // continua atacando (onCanvasClick); só vira push se arrastar >5px.
-      const cr = this.entityAt(t.x, t.y);
-      if (cr && cr.kind === "monster") {
-        Drag.begin({ kind: "creature", id: cr.id, x: t.x, y: t.y },
-                   ev, cr.sprite);
-        return;
-      }
+      // PRIORIDADE: itens no chão primeiro. Só quando NÃO há item é que o
+      // arrasto pega a criatura (empurrar). Assim arrastar um SQM com bicho
+      // EM CIMA de itens move os itens; depois de tirá-los, arrasta o bicho.
       const pile = G.ground.get(groundKey(t.x, t.y, me.z || 0));
       if (pile && pile.length) {
         const def = ItemDefs[pile[pile.length - 1].id] || {};
         Drag.begin({ kind: "ground", x: t.x, y: t.y }, ev, def.sprite);
+        return;
+      }
+      // sem itens: criatura no tile -> arrasto de EMPURRAR (1 SQM). Clique sem
+      // mover continua atacando (onCanvasClick); só vira push se arrastar >5px.
+      const cr = this.entityAt(t.x, t.y);
+      if (cr && cr.kind === "monster") {
+        Drag.begin({ kind: "creature", id: cr.id, x: t.x, y: t.y },
+                   ev, cr.sprite);
       }
     });
     canvas.addEventListener("contextmenu", (ev) => {
@@ -305,8 +308,6 @@ const Input = {
     }
     if (ev.key === "Escape") {
       if (UI.mapOpen()) UI.closeMap();
-      else if (!UI.$("help-modal").classList.contains("hidden"))
-        UI.$("help-modal").classList.add("hidden");
       else if (!UI.$("hotkeys-window").classList.contains("hidden"))
         UI.$("hotkeys-window").classList.add("hidden");
       else if (!UI.$("skills-window").classList.contains("hidden"))
@@ -318,6 +319,13 @@ const Input = {
         if (G.targetId) Net.send({ type: "attack", id: 0 });
       }
       UI.selectSlot(null);
+      return;
+    }
+
+    // ESPAÇO: cicla para o próximo monstro visível (ignora NPCs)
+    if (ev.code === "Space") {
+      this.cycleTarget();
+      ev.preventDefault();
       return;
     }
 
@@ -368,6 +376,24 @@ const Input = {
       }
     }
     return found;
+  },
+
+  /** Espaço: seleciona o próximo monstro visível (ordenado por distância). */
+  cycleTarget() {
+    const me = myPlayer();
+    if (!me) return;
+    const z = me.z || 0;
+    const mons = [...G.entities.values()]
+      .filter(e => e.kind === "monster" && (e.z || 0) === z)
+      .sort((a, b) => {
+        const da = Math.max(Math.abs(a.x - me.x), Math.abs(a.y - me.y));
+        const db = Math.max(Math.abs(b.x - me.x), Math.abs(b.y - me.y));
+        return da - db || a.id - b.id;
+      });
+    if (!mons.length) return;
+    const idx = mons.findIndex(e => e.id === G.targetId);
+    const next = mons[(idx + 1) % mons.length];   // wrap: último -> primeiro
+    Net.send({ type: "attack", id: next.id });
   },
 
   onCanvasClick(ev) {

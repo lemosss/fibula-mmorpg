@@ -312,9 +312,9 @@ const Render = {
       this.octext(t.ix, t.iy, t.str, "#fff", "right", small);
     }
 
-    // criaturas: barra de vida + nome + caveira
+    // criaturas: barra de vida + nome + caveira (NPCs também têm barra)
     for (const { e, dx, dy } of this._labels) {
-      if (e.kind !== "npc") {
+      if (e.maxhp) {
         const pct = Math.max(0, e.hp / e.maxhp);
         const col = pct > 0.5 ? "#46c846" : pct > 0.25 ? "#c8b446" : "#c84646";
         this.obar(dx + 5, dy - 5, 22, 3, pct, col);
@@ -443,10 +443,14 @@ const Minimap = {
     return this.bases[(me && me.z) || 0];
   },
 
+  ZOOMS: [16, 24, 34, 50, 70, 100],  // tiles visíveis (menor = mais perto)
+
   build() {
     this.el = document.getElementById("minimap");
     this.ctx = this.el.getContext("2d");
     this.ctx.imageSmoothingEnabled = false;
+    const z = parseInt(localStorage.getItem("fibula.mmzoom"), 10);
+    if (this.ZOOMS.includes(z)) this.VIEW = z;      // zoom salvo
     const m = G.map;
     this.bases = m.floors.map(floor => {
       const c = document.createElement("canvas");
@@ -481,6 +485,15 @@ const Minimap = {
   },
 
   center() { this.follow = true; },
+
+  /** Zoom do minimapa. dir +1 = aproxima (menos tiles), -1 = afasta. */
+  zoom(dir) {
+    let i = this.ZOOMS.indexOf(this.VIEW);
+    if (i < 0) i = this.ZOOMS.indexOf(50);
+    i = Math.max(0, Math.min(this.ZOOMS.length - 1, i - dir));
+    this.VIEW = this.ZOOMS[i];
+    try { localStorage.setItem("fibula.mmzoom", String(this.VIEW)); } catch (e) {}
+  },
 
   /** Converte um clique no canvas do minimapa em tile do mapa. */
   tileAt(canvas, clientX, clientY) {

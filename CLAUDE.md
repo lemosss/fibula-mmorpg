@@ -128,26 +128,40 @@ players SÓ dentro do viewport da tela (±Render.VIEW_W/2 x, ±VIEW_H/2 y =
 ±7/±5), ordenados por distância, mini-sprite + barra; clique = `attack`; alvo
 ganha `.targeted`. Atualiza a cada 250ms + na msg `target`.
 
-### Janelas em COLUNAS DE DOCK (2 esquerda + 1 direita, recolhíveis)
-TRÊS colunas de encaixe: `#dock-left` e `#dock-left2` (à esquerda da tela) e
-`#dock-right` (dentro da `#sidebar`, abaixo do minimapa/HP/MP). Cada dock tem um
-`.dock-body` (id `dock-left-body`/`dock-left2-body`/`dock-right-body`) onde as
-janelas `.container-panel.movable` (equip, combat-bar, battle, inv, skills) ficam.
-Arrastar o `.cont-header` MOVE a janela ENTRE qualquer coluna e reordena por Y
-(`UI.makeWindowMovable` + `UI.dockAt` → devolve o `.dock-body` da coluna sob o X,
-ignorando colunas recolhidas). NUNCA flutua. Layout persiste em
-`localStorage["fibula.dock"]` (`saveDockLayout`/`restoreDockLayout`, por body id).
-`.dock-body:empty::before` = dica "arraste janelas". `.dock-body.dock-target` =
-realce suave do destino. Drop de loot/ground aceita `#sidebar, #dock-left,
-#dock-left2, #dock-right` (input.js `inCols`).
+### Janelas em COLUNAS DE DOCK (principal na sidebar + colunas extras)
+A coluna PRINCIPAL de encaixe é `#dock-right-body` (`.dock-body` DENTRO da
+`#sidebar`, abaixo do minimapa/HP/MP) — é onde as janelas
+`.container-panel.movable` (equip, combat-bar, inv, battle, skills) vivem por
+padrão e é um ALVO DE DROP PERMANENTE (a `#sidebar` inteira conta como hit-area).
+Isso conserta o "não consigo soltar janela na dock do minimapa". Colunas EXTRAS
+`.dock-col[data-side="left|right"]`: **máx 1 extra por lado** — esquerda
+`#dock-left` (sempre visível) + `#dock-left2`; direita só `#dock-right2` (a
+principal já é a sidebar). As extras começam `.hidden`; as da direita abrem ENTRE
+`#game-main` e a sidebar. Cada uma tem `.dock-body`. (Limite: esquerda = 2 colunas
+no total; direita = principal + 1.)
 
-RECOLHER: cada dock tem botão `.dock-collapse[data-dock]`. Esquerdas começam
-RECOLHIDAS (class `collapsed` no HTML) — viram tira fina de 18px só com a seta
-(`#dock-left.collapsed` → flex-basis:18px, `.dock-body` some). A direita recolhe
-pelo `#dock-right-toggle` posicionado no canto do minimapa (pedido do usuário:
-"acima e ao lado do minimapa"). `UI.toggleDock`/`updateDockArrows`/`initDockToggles`
-persistem o estado em `localStorage["fibula.dockcollapse"]`. Setas: esquerdas
-`‹`=recolher/`›`=expandir; direita invertida.
+Arrastar o `.cont-header` MOVE a janela entre alvos e reordena por Y
+(`UI.makeWindowMovable` + `UI.dockAt`). **`UI.dockTargets()`** = colunas extras
+visíveis + a coluna principal da sidebar (`{el:#sidebar, body:#dock-right-body}`);
+`dockAt(x)` devolve o `.dock-body` cujo `el` contém X (senão o mais próximo). NUNCA
+flutua.
+
+**Setinhas na DIVISA (2 controles):** `#dock-ctrl-left`/`#dock-ctrl-right` nas bordas
+de `#game-main` (`position:relative`). Esquerda `›` add / `‹` remove; direita
+espelhada `‹` add / `›` remove (botões `.dock-more`/`.dock-less` com `data-side`).
+Mexem só nas colunas EXTRAS (`sideCols(side)` = `.dock-col[data-side]`); a coluna
+do minimapa é permanente. `removeDock` manda as janelas da coluna fechada p/ outra
+do mesmo lado ou, senão, p/ a principal (`#dock-right-body`) — janela nunca se
+perde. Esquerda pode fechar TODAS as suas colunas. Persistência em
+`localStorage["fibula.dock"]` = `{docks:{bodyId:[winIds]}, open:[dockColIds]}`
+(`.dock-body` inclui a principal). Drop de loot/ground aceita `.dock-col, #sidebar`.
+
+### Zoom do minimapa (＋/−)
+`#mm-zoom` (canto sup-esq do minimapa) tem `#mm-zin`/`#mm-zout` → `Minimap.zoom(±1)`.
+`Minimap.VIEW` = nº de tiles visíveis (menor = mais perto); passos em
+`Minimap.ZOOMS = [16,24,34,50,70,100]`. `draw()` lê `this.VIEW` a cada frame, então
+o zoom é imediato; persiste em `localStorage["fibula.mmzoom"]` (restaurado em
+`Minimap.build`). Não afeta o mapa grande (#bigmap).
 
 `.win-resizer` (borda inferior inteira) redimensiona o corpo (UI.makeResizer; lê
 `offsetHeight` no mousedown, ajusta pelo delta do cursor, clamp 28–460). TODA
@@ -171,19 +185,26 @@ chama `find_path(allow_diag=True, diag_penalty=True)` como último recurso. NUNC
 prioriza diagonal. `find_path` agora tem dois modos: BFS uniforme (rápido, default)
 e, com `diag_penalty=True`, Dijkstra com custo cardeal=1 / diagonal=3 → MINIMIZA o
 nº de diagonais (diagonal só pra "sair" do bloqueio, depois volta ao ortogonal).
-Diagonal nunca corta quina de PAREDE (exige os 2 ortogonais livres). `avoid` =
-tiles de criaturas (contorna grupos). Call-sites do player (h_walkto,
-player_autowalk recalc, _walk_then×2, player_follow) e dos monstros (step_toward)
-usam `find_path_smart`. `_monster_step`/player_autowalk ainda tratam custo 2x do
-passo diagonal quando ele acontece.
+Diagonal nunca corta quina de PAREDE (exige os 2 ortogonais livres).
 
-### Reposicionamento DINÂMICO em combate (server)
-monster_ai: quando dist<=1 e o ataque em cooldown, a cada `step_dur` com 35% de
-chance chama `_reposition` (antes era 10% e ficava preso — usuário pediu mais
-dinâmico, cercar). `_reposition` dá UM passo CARDEAL para um SQM livre ainda
-colado no alvo, preferindo o lado MENOS lotado de monstros (`crowd()` conta
-monstros vizinhos) → espalha/cerca o jogador. NUNCA diagonal no ataque; sem
-cardeal válido fica parado. Chase (dist>1) usa step_toward→find_path_smart.
+**CONTORNAR criaturas — `Game._player_path(p, tx, ty)`** é o helper de TODA
+caminhada do player (h_walkto, player_autowalk recalc, _walk_then, player_follow):
+monta `avoid` = tiles de criaturas (monstros/NPCs/players) num raio 16 e tenta
+`find_path_smart(avoid=...)` → ROTA AO REDOR. Se não houver desvio, faz fallback
+`find_path_smart` sem avoid (encara e o autowalk recontorna conforme elas andam).
+Só devolve None quando NÃO existe caminho nenhum. Isso conserta o bug "clico atrás
+de 3 monstros e o personagem fica parado". player_autowalk recalcula com avoid a
+cada tile ocupado e só desiste após ~3s sem rota. Monstros: step_toward usa
+find_path_smart com avoid de criaturas.
+
+### Movimento dos monstros em combate (server) — 20% + box de 2a camada
+monster_ai: dist<=1 → ataca; considera reposicionar a cada `2*step_dur` com
+**20%** de chance (`_reposition` anda p/ um SQM cardeal válido colado no alvo,
+preferindo o lado menos lotado — SEM trava de "só se melhora o aperto", senão
+monstro SOLO nunca andava). dist>1: se o alvo já está totalmente cercado
+(`_target_boxed` = nenhum tile livre adjacente ao alvo), o monstro NÃO recalcula
+rota/dança — vira-se pro alvo e espera (next_move += 3*step_dur), formando a 2a
+camada; quando abre vaga, avança. Senão, step_toward normal.
 
 ### Empurrar criaturas (push, estilo Tibia)
 Arrastar uma CRIATURA no mapa empurra-a 1 SQM. Cliente: canvas mousedown sobre um
@@ -192,14 +213,38 @@ ataca; só vira push se arrastar >5px). Drop → `{type:"push", id, tx, ty}`. Se
 `h_push`: valida player encostado na criatura (Chebyshev<=1), destino encostado na
 criatura (==1 SQM), tile andável/livre/sem PZ/sem no_monster, diagonal sem cortar
 quina; move com `move_creature` na MESMA velocidade do monstro (dur = step_dur,
-ou 2x em diagonal — o usuário reclamou que "corriam muito" com dur fixo). `m.next_move`
-recebe o mesmo dur (anti-spam). Monstros têm `pushable` (default True; futuro:
-`"pushable": false` em monsters.json p/ bosses).
+ou 2x em diagonal). **Cooldowns (anti-spam, sensação de peso):** `p.next_push`
+= now + `PUSH_CD_MS` (700ms) — o jogador não empurra de novo antes disso;
+`m.push_until` = now + dur — a criatura precisa CONCLUIR o passo antes de poder
+ser re-empurrada; `m.next_move` += dur (a IA dela espera concluir). Monstros têm
+`pushable` (default True; futuro `"pushable": false` em monsters.json p/ bosses).
 
-### Alvo selecionado: retângulo VERMELHO SÓLIDO
+### Alvo selecionado: retângulo VERMELHO SÓLIDO + tecla Espaço
 No game-canvas (render.js frame): `ctx.strokeStyle="#e33"; lineWidth=2;
-strokeRect(dx+1,dy+1,T-2,T-2)`. O usuário testou tracejado e REJEITOU — quer
-vermelho sólido "igual sempre foi". NÃO trocar por dashed/overlay.
+strokeRect(dx+1,dy+1,T-2,T-2)`. O usuário testou tracejado e REJEITOU — vermelho
+sólido "igual sempre foi". NÃO trocar por dashed/overlay. **Espaço** (input.js
+`cycleTarget`): cicla o próximo MONSTRO visível (G.entities kind=="monster" do
+andar, ordenado por distância, wrap no fim; ignora NPC), funciona com a Battle
+fechada.
+
+### HP não regenera em PZ (server)
+player_regen: HP só sobe se `not world.in_pz(p.x,p.y,p.z)`. Poção/magia ainda
+curam em PZ; MP regenera normal. (PZ-lock de logout/combate é outra coisa.)
+
+### NPCs: HP + barra + vagueio por raio (server)
+`Npc(Creature)` herda HP/maxhp da base (todas as criaturas compartilham
+Creature). Config opcional em `data/npcs.json` por NPC: `hp`, `walks` (default
+True), `walkRadius` (2), `walkMin`/`walkMax` (4000/9000 ms), `invulnerable`
+(True), `attackable` (False). `Game.npc_ai(npc, now)` (chamado no tick p/ cada
+npc): ocasionalmente (timer walkMin–walkMax, ~40% de chance de virar passo) dá UM
+passo CARDEAL dentro do `walkRadius` do `home`, respeitando walkable/ocupado/
+no_monster (NPCs PODEM andar em PZ; só não pisam em buracos/escadas). NPCs ficam
+em `by_pos` → o `_player_path` já os contorna (obstáculo temporário). Cliente
+(render.js) desenha a barra de vida p/ qualquer criatura com `maxhp` (NPCs
+inclusos). Combate contra NPC ainda NÃO está ligado (invulnerable por default); os
+campos `invulnerable`/`attackable` ficam prontos p/ mecânicas futuras (escolta,
+pet, summon). NÃO mira NPC: h_attack só aceita monstro/player; Espaço (cycleTarget)
+ignora NPC.
 
 ### Backpack / itens empilháveis (estilo Tibia)
 - **Slot da backpack equipada NUNCA é substituído por arraste.** Cliente
@@ -221,10 +266,20 @@ vermelho sólido "igual sempre foi". NÃO trocar por dashed/overlay.
 - Cuidado: como o inv compacta, dropar um item "no slot 7" NÃO o fixa lá — ele
   volta pro primeiro slot livre. O smoke_test foi atualizado p/ esse comportamento.
 
-### Barra de combate independente
-`#combat-bar` (.container-panel.movable, FORA do #equip-window): Attack/Balance/
-Defense/PvP/Follow/☰. Sempre visível (minimizar/fechar equip ou mochila NÃO a
-afeta — é sibling), movível pelo header, SEM botão fechar/minimizar.
+### Barra de combate = TODOS os botões juntos, só ÍCONES, grade 4-col
+`#combat-bar` (.container-panel.movable) tem `#combat-controls` (CSS GRID
+`repeat(4,1fr)` → 4 quadradinhos por linha preenchendo a largura, quebra depois)
+com 9 botões SÓ DE ÍCONE: ⚔ `#st-attack` / ⚖ `#st-balanced` / 🛡 `#st-defense` /
+☠ `#btn-pvp` / 🧍 `#btn-follow` / ☰ `#btn-battle` / 💪 `#btn-skills` / ⌨
+`#btn-hotkeys` / 🚪 `#btn-logout`. (Sem texto; `#btn-help`/"?" REMOVIDO; o
+`#window-buttons` da sidebar e o `#btn-battle2` também já tinham saído.) Posturas/
+alvo escurecem (.55) quando inativos; `.active` realça. Wiring por getElementById.
+
+### Faixas ao redor do mapa = material da interface (não preto)
+`#canvas-wrap` (onde o canvas 480x352 letterboxa) tem `background: linear-gradient`
+nos tons do painel + `box-shadow: inset` (profundidade) — integra o mapa ao
+cliente em vez de barras pretas. O canvas do jogo ainda pinta #000 só DENTRO do
+mapa (vazio do mundo), separado dessas faixas.
 
 ### Aggro por visão (server)
 monster_ai: o monstro mira quem estiver no retângulo config.AGGRO_X/Y (9x7 ≈
@@ -251,6 +306,22 @@ chão também).
   processado por `player_pending` no tick. Usado por h_pickup/h_open_container/
   h_move_ground. Cliente manda a ação SEMPRE (não walkto antes); servidor anda.
   pending é cancelado por movimento manual e morte.
+- **PARA NO SQM ANTERIOR (não pisa no alvo):** quando a interação dispara,
+  `player_pending` ZERA `p.path` (chave! senão o último passo ainda pisava no
+  tile do item no tick seguinte, pois pending já estava None). Reforço extra em
+  `player_autowalk`: se o próximo passo == tile pendente, não pisa. Assim arrastar
+  item do chão deixa o personagem 1 SQM ANTES (range p/ pegar/empurrar), nunca em
+  cima. Verificado: item (26,42) → personagem para em (25,42).
+- **Arraste no mapa: ITENS antes de CRIATURA.** input.js canvas mousedown checa
+  a pilha do chão PRIMEIRO (arrasta item); só sem itens é que pega a criatura
+  (empurrar). Clique sem mover ainda ataca o bicho.
+- **Mover item do chão: ANDA até o item, move com CONTATO, joga LONGE.**
+  `h_move_ground` usa `_walk_then(p,fx,fy,fn)`: o personagem CAMINHA até encostar
+  no item (para no SQM anterior, adjacente — graças ao `player_pending` que zera
+  o path em dist<=1) e só então `_do_move_ground`. Trava defensiva: só move se
+  dist(p,(fx,fy))<=1 (nunca com gap). O DESTINO pode ser longe (`THROW_RANGE=7`,
+  dentro da tela); fora disso/parede cai aos pés. (h_drop inv→chão = DROP_RANGE 3,
+  à parte.) Verificado: item a 3 SQM → personagem anda até dist 1 e então move ✓.
 
 ### Clique no mundo (importante)
 `Render.screenToTile` respeita o letterbox (object-fit:contain) e retorna

@@ -143,6 +143,7 @@ class Player(Creature):
         self.skull_until = 0.0                # caveira visível (agressor PvP)
         self.lingering = False                # fechou o cliente em combate PvP
         self.pending = None                   # ação a executar ao chegar perto
+        self.next_push = 0.0                  # cooldown do jogador entre empurrões
 
     # ----------------------------------------------------------- atributos
 
@@ -363,6 +364,7 @@ class Monster(Creature):
         # empurrável (estilo Tibia): por enquanto TODOS são; no futuro dá pra
         # marcar bosses/criaturas fixas com "pushable": false no monsters.json
         self.pushable = d.get("pushable", True)
+        self.push_until = 0.0                 # enquanto conclui o empurrão atual
 
 
 class Npc(Creature):
@@ -370,5 +372,13 @@ class Npc(Creature):
 
     def __init__(self, name: str, ndef: dict):
         x, y = ndef["pos"]
-        super().__init__(name, x, y, ndef["sprite"], 100)
+        super().__init__(name, x, y, ndef["sprite"], ndef.get("hp", 100))
         self.ndef = ndef
+        # config individual (tudo opcional em npcs.json, com defaults sensatos)
+        self.home = (x, y)
+        self.walks = ndef.get("walks", True)        # anda ocasionalmente?
+        self.walk_radius = ndef.get("walkRadius", 2)  # raio máx. ao redor do home
+        self.walk_min = ndef.get("walkMin", 4000)   # intervalo mín. entre passos
+        self.walk_max = ndef.get("walkMax", 9000)   # intervalo máx.
+        self.invulnerable = ndef.get("invulnerable", True)
+        self.attackable = ndef.get("attackable", False)

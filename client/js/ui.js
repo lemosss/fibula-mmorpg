@@ -106,7 +106,7 @@ const UI = {
     this.$("bar-hp-text").textContent = `${s.hp}/${s.maxhp}`;
     this.$("bar-mp").style.width = pct(s.mp, s.maxmp);
     this.$("bar-mp-text").textContent = `${s.mp}/${s.maxmp}`;
-    this.$("ui-level").textContent = "Lv " + s.level;
+    // (o Level agora aparece só na janela de Habilidades, não no header)
     // Cap embaixo do Ring; Atk/Def embaixo do Ammo (estilo Tibia)
     this.$("eq-cap").innerHTML =
       `Cap<br><b>${Math.max(0, Math.round(s.maxcap - s.cap))}</b>`;
@@ -199,7 +199,6 @@ const UI = {
 
   initBattle() {
     this.$("btn-battle").onclick = () => this.toggleWindow("battle-window");
-    this.$("btn-battle2").onclick = () => this.toggleWindow("battle-window");
     // atualiza a lista periodicamente (posições/HP mudam o tempo todo)
     setInterval(() => { if (G.loggedIn) this.renderBattle(); }, 250);
   },
@@ -280,9 +279,10 @@ const UI = {
       row.className = "skill-row";
       row.title = `${sk.pct}% para o próximo nível`;
       row.innerHTML =
-        `<span class="sk-name">${label}</span>` +
-        `<span class="sk-level">${sk.level}</span>` +
-        `<span class="sk-bar"><span class="sk-fill" style="width:${sk.pct}%"></span></span>`;
+        `<div class="sk-head"><span class="sk-name">${label}</span>` +
+        `<span class="sk-level">${sk.level}</span></div>` +
+        `<div class="sk-bar"><span class="sk-fill" style="width:${sk.pct}%"></span>` +
+        `<span class="sk-pct">${sk.pct}%</span></div>`;
       body.appendChild(row);
     }
   },
@@ -342,14 +342,6 @@ const UI = {
   initWindows() {
     this.$("btn-skills").onclick = () => this.toggleWindow("skills-window");
     this.$("btn-hotkeys").onclick = () => this.toggleWindow("hotkeys-window");
-    this.$("btn-help").onclick = () =>
-      this.$("help-modal").classList.remove("hidden");
-    this.$("help-close").onclick = () =>
-      this.$("help-modal").classList.add("hidden");
-    this.$("help-modal").onclick = (ev) => {
-      if (ev.target === this.$("help-modal"))
-        this.$("help-modal").classList.add("hidden");
-    };
     document.querySelectorAll(".fw-close").forEach(btn => {
       btn.onclick = () => this.$(btn.dataset.close).classList.add("hidden");
     });
@@ -372,7 +364,7 @@ const UI = {
       this.makeWindowMovable(win);
     });
     this.restoreDockLayout();           // recoloca janelas onde o jogador deixou
-    this.initDockToggles();             // recolher/expandir colunas
+    this.initDockButtons();             // ＋ adiciona coluna / × remove
     this.initQtyModal();                // seletor de quantidade (split)
   },
 
@@ -390,29 +382,89 @@ const UI = {
     document.addEventListener("mouseup", () => { drag = false; });
   },
 
-  /** Docks ABERTAS (não recolhidas). */
-  openDocks() {
-    return ["dock-left", "dock-left2", "dock-right"]
-      .map(id => this.$(id))
-      .filter(d => d && !d.classList.contains("collapsed"));
+  /** Colunas EXTRAS de um lado (as adicionáveis/fecháveis pela setinha). */
+  sideCols(side) {
+    return [...document.querySelectorAll(`.dock-col[data-side="${side}"]`)];
   },
 
-  /** Corpo (.dock-body) da coluna sob o cursor; ignora colunas recolhidas. */
+  /**
+   * Alvos de encaixe (corpo + elemento p/ hit-test): colunas extras VISÍVEIS +
+   * a coluna PRINCIPAL que fica na sidebar (#dock-right-body) — esta é o alvo
+   * permanente, então arrastar janela "pra perto do minimapa" SEMPRE encaixa.
+   */
+  dockTargets() {
+    const t = [...document.querySelectorAll(".dock-col:not(.hidden)")]
+      .map(d => ({ el: d, body: d.querySelector(".dock-body") }));
+    const sb = this.$("sidebar"), sbBody = this.$("dock-right-body");
+    if (sb && sbBody) t.push({ el: sb, body: sbBody });   // coluna do minimapa
+    return t.filter(x => x.body);
+  },
+
+  /** Corpo (.dock-body) sob o cursor (o que contém X, senão o mais próximo). */
   dockAt(x) {
-    const open = this.openDocks();
-    for (const d of open) {
-      const r = d.getBoundingClientRect();
-      if (x >= r.left && x <= r.right) return d.querySelector(".dock-body");
+    const t = this.dockTargets();
+    for (const { el, body } of t) {
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right) return body;
     }
-    let best = null, bd = Infinity;                // sobre o mapa: a mais perto
-    for (const d of open) {
-      const r = d.getBoundingClientRect();
+    let best = null, bd = Infinity;                // sobre o mapa: o mais perto
+    for (const { el, body } of t) {
+      const r = el.getBoundingClientRect();
       const cx = (r.left + r.right) / 2;
-      if (Math.abs(x - cx) < bd) {
-        bd = Math.abs(x - cx); best = d.querySelector(".dock-body");
-      }
+      if (Math.abs(x - cx) < bd) { bd = Math.abs(x - cx); best = body; }
     }
     return best;
+  },
+
+  /** Adiciona (revela) a próxima coluna extra escondida do lado. */
+  addDock(side) {
+    const next = this.sideCols(side).find(d => d.classList.contains("hidden"));
+    if (next) next.classList.remove("hidden");
+    this.updateDockCtrl();
+    this.saveDockLayout();
+  },
+
+  /** Fecha uma coluna extra; as janelas dela voltam p/ outra coluna do mesmo
+      lado ou, se não houver, p/ a coluna PRINCIPAL (a do minimapa). */
+  removeDock(id) {
+    const dock = this.$(id);
+    if (!dock || dock.classList.contains("hidden")) return;
+    const wins = [...dock.querySelectorAll(".dock-body > .movable")];
+    const side = dock.dataset.side;
+    const sameSide = this.sideCols(side)
+      .filter(d => d !== dock && !d.classList.contains("hidden"));
+    const dest = (sameSide.length
+      ? sameSide[sameSide.length - 1].querySelector(".dock-body")
+      : this.$("dock-right-body"));
+    if (dest) wins.forEach(w => dest.appendChild(w));
+    dock.classList.add("hidden");
+    this.updateDockCtrl();
+    this.saveDockLayout();
+  },
+
+  /** Remove a ÚLTIMA coluna aberta do lado (pode chegar a ZERO colunas). */
+  removeLastDock(side) {
+    const vis = this.sideCols(side).filter(d => !d.classList.contains("hidden"));
+    if (vis.length) this.removeDock(vis[vis.length - 1].id);
+  },
+
+  /** Liga/desliga as setinhas de cada lado conforme dá p/ add/remover. */
+  updateDockCtrl() {
+    for (const side of ["left", "right"]) {
+      const cols = this.sideCols(side);
+      const more = document.querySelector(`.dock-more[data-side="${side}"]`);
+      const less = document.querySelector(`.dock-less[data-side="${side}"]`);
+      if (more) more.disabled = !cols.some(d => d.classList.contains("hidden"));
+      if (less) less.disabled = !cols.some(d => !d.classList.contains("hidden"));
+    }
+  },
+
+  initDockButtons() {
+    document.querySelectorAll(".dock-more").forEach(b =>
+      b.onclick = () => this.addDock(b.dataset.side));
+    document.querySelectorAll(".dock-less").forEach(b =>
+      b.onclick = () => this.removeLastDock(b.dataset.side));
+    this.updateDockCtrl();
   },
 
   /**
@@ -454,75 +506,38 @@ const UI = {
     });
   },
 
-  /** Salva em qual coluna e em que ordem está cada janela. */
+  /** Salva quais colunas estão abertas + ordem das janelas em cada .dock-body
+      (inclui a coluna principal #dock-right-body da sidebar). */
   saveDockLayout() {
-    const layout = {};
-    for (const id of ["dock-left-body", "dock-left2-body", "dock-right-body"]) {
-      const d = this.$(id);
-      if (d) layout[id] = [...d.children]
+    const docks = {};
+    document.querySelectorAll(".dock-body").forEach(body => {
+      docks[body.id] = [...body.children]
         .filter(c => c.classList.contains("movable")).map(c => c.id);
-    }
-    try { localStorage.setItem("fibula.dock", JSON.stringify(layout)); }
+    });
+    const open = [...document.querySelectorAll(".dock-col:not(.hidden)")].map(d => d.id);
+    try { localStorage.setItem("fibula.dock", JSON.stringify({ docks, open })); }
     catch (e) { /* localStorage indisponível: tudo bem */ }
   },
 
-  /** Restaura a disposição salva das janelas nas colunas. */
+  /** Restaura quais colunas estão abertas e a disposição salva das janelas. */
   restoreDockLayout() {
     let layout = null;
     try { layout = JSON.parse(localStorage.getItem("fibula.dock") || "null"); }
     catch (e) { return; }
     if (!layout) return;
-    for (const id of ["dock-left-body", "dock-left2-body", "dock-right-body"]) {
-      const d = this.$(id);
-      if (!d || !Array.isArray(layout[id])) continue;
-      for (const winId of layout[id]) {
+    const docks = layout.docks || layout;          // aceita formato antigo plano
+    if (Array.isArray(layout.open)) {              // visibilidade exata das colunas
+      document.querySelectorAll(".dock-col").forEach(d =>
+        d.classList.toggle("hidden", !layout.open.includes(d.id)));
+    }
+    for (const [bodyId, ids] of Object.entries(docks)) {
+      const body = this.$(bodyId);
+      if (!body || !Array.isArray(ids)) continue;
+      for (const winId of ids) {
         const win = this.$(winId);
-        if (win) d.appendChild(win);               // move e respeita a ordem
+        if (win) body.appendChild(win);            // move e respeita a ordem
       }
     }
-  },
-
-  // ----------------------------------------- recolher/expandir docks
-
-  toggleDock(dockId) {
-    const dock = this.$(dockId);
-    if (!dock) return;
-    dock.classList.toggle("collapsed");
-    this.updateDockArrows();
-    const st = {};
-    ["dock-left", "dock-left2", "dock-right"].forEach(id => {
-      const d = this.$(id);
-      if (d) st[id] = d.classList.contains("collapsed");
-    });
-    try { localStorage.setItem("fibula.dockcollapse", JSON.stringify(st)); }
-    catch (e) { /* ok */ }
-  },
-
-  /** Setas indicam o sentido de recolher/expandir cada coluna. */
-  updateDockArrows() {
-    document.querySelectorAll(".dock-collapse").forEach(btn => {
-      const dock = this.$(btn.dataset.dock);
-      if (!dock) return;
-      const col = dock.classList.contains("collapsed");
-      if (btn.dataset.dock === "dock-right") btn.textContent = col ? "‹" : "›";
-      else btn.textContent = col ? "›" : "‹";       // esquerdas: invertido
-    });
-  },
-
-  initDockToggles() {
-    document.querySelectorAll(".dock-collapse").forEach(btn => {
-      btn.onclick = () => this.toggleDock(btn.dataset.dock);
-    });
-    let st = null;
-    try { st = JSON.parse(localStorage.getItem("fibula.dockcollapse") || "null"); }
-    catch (e) { st = null; }
-    if (st) {
-      ["dock-left", "dock-left2", "dock-right"].forEach(id => {
-        const d = this.$(id);
-        if (d) d.classList.toggle("collapsed", !!st[id]);
-      });
-    }
-    this.updateDockArrows();
   },
 
   // --------------------------------------- seletor de quantidade (split)
@@ -828,6 +843,8 @@ const UI = {
     });
     this.$("mm-center").onclick = () => Minimap.center();
     this.$("mm-expand").onclick = () => this.openMap();
+    this.$("mm-zin").onclick = () => Minimap.zoom(1);    // aproxima
+    this.$("mm-zout").onclick = () => Minimap.zoom(-1);  // afasta
     this.$("map-close").onclick = () => this.closeMap();
     this.$("map-modal").onclick = (ev) => {
       if (ev.target === this.$("map-modal")) this.closeMap();

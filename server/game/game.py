@@ -69,7 +69,10 @@ STANCES = {
     "defense":  (0.7, 1.4),
 }
 DIAGONAL_STEP_FACTOR = 2     # passo diagonal demora 2x (estilo Tibia)
-DROP_RANGE = 3               # distância máxima para jogar itens
+PUSH_CD_MS = 700             # cooldown do jogador entre empurrões (anti-spam)
+NPC_STEP_MS = 480            # duração do passo de NPC (animação de caminhada)
+DROP_RANGE = 3               # distância máxima para jogar itens (mochila -> chão)
+THROW_RANGE = 7              # arremesso de item DO CHÃO p/ longe (dentro da tela)
 
 
 class Game:
@@ -314,7 +317,7 @@ class Game:
         p.pending_stairs = None
         tx = max(0, min(self.world.w - 1, int(msg.get("x", p.x))))
         ty = max(0, min(self.world.h - 1, int(msg.get("y", p.y))))
-        path = self.world.find_path_smart(p.z, p.x, p.y, tx, ty)
+        path = self._player_path(p, tx, ty)        # contorna criaturas
         if path is None:
             self.chat_to(p, "Nao ha caminho ate la.")
             return
@@ -327,23 +330,30 @@ class Game:
         if not p.path or now < p.next_move:
             return
         nx, ny = p.path[0]
+        # interação pendente (pegar/mover item, abrir corpo): NÃO pisa no tile-alvo
+        # — para no SQM anterior (adjacente) p/ ter range. A ação dispara no
+        # player_pending quando estiver a 1 SQM.
+        if p.pending and (nx, ny) == (p.pending[0], p.pending[1]):
+            p.path = []
+            return
         if self._pz_entry_blocked(p, nx, ny):
             p.path = []
             return self.chat_to(
                 p, "Voce esta em combate PvP e nao pode entrar na "
                    "zona de protecao.")
         if self.occupied(nx, ny, p.z):
-            # criatura no caminho: recalcula a rota; se continuar bloqueado,
-            # espera um pouco (ela pode sair) e desiste depois de ~2s
+            # criatura no caminho: recalcula CONTORNANDO as criaturas; se achar
+            # um desvio com o 1o passo livre, segue por ele. Senão espera (elas
+            # podem sair) e só desiste após ~3s sem nenhuma rota possível.
             tx, ty = p.path_target
-            new = self.world.find_path_smart(p.z, p.x, p.y, tx, ty)
+            new = self._player_path(p, tx, ty)
             if new and not self.occupied(new[0][0], new[0][1], p.z):
                 p.path = new
                 p.path_stuck = 0
                 nx, ny = p.path[0]
             else:
                 p.path_stuck += 1
-                if p.path_stuck > 20:
+                if p.path_stuck > 30:
                     p.path = []
                     self.chat_to(p, "O caminho esta bloqueado.")
                 return
@@ -380,6 +390,8 @@ class Game:
                 self.leave_world(p)
         for m in list(self.monsters.values()):
             self.monster_ai(m, now)
+        for npc in list(self.npcs.values()):
+            self.npc_ai(npc, now)
         while self.respawn_q and self.respawn_q[0][0] <= now:
             _, _, zone = heapq.heappop(self.respawn_q)
             self.schedule_birth(zone, now)
@@ -423,22 +435,33 @@ class Game:
             self.chat_to(p, "Voce agrediu um jogador: caveira ativa, sem "
                             "logout e sem entrar na cidade por um tempo.")
 
+    def _player_path(self, p: Player, tx: int, ty: int, max_len: int = 200):
+        """
+        Rota ORTOGONAL-FIRST até (tx,ty) CONTORNANDO criaturas (monstros, NPCs,
+        players) tratadas como obstáculos temporários. Se não houver rota
+        desviando, encara direto (e o autowalk recontorna conforme elas andam).
+        Só devolve None quando NÃO existe nenhum caminho possível.
+        """
+        avoid = {(bx, by) for (bx, by, bz) in self.by_pos
+                 if bz == p.z and (bx, by) != (tx, ty) and (bx, by) != (p.x, p.y)
+                 and abs(bx - p.x) <= 16 and abs(by - p.y) <= 16}
+        path = self.world.find_path_smart(p.z, p.x, p.y, tx, ty,
+                                          max_len=max_len, avoid=avoid)
+        if path is None:                          # nenhum desvio: vai direto
+            path = self.world.find_path_smart(p.z, p.x, p.y, tx, ty,
+                                              max_len=max_len)
+        return path
+
     def _walk_then(self, p: Player, tx: int, ty: int, fn):
         """
         Executa `fn` se já estiver adjacente a (tx,ty); senão CANCELA o follow,
-        anda até lá (contornando paredes/criaturas, com diagonais) e executa
-        ao chegar (estilo Tibia: arrastar/clicar algo longe te leva).
+        anda até lá (contornando paredes/criaturas) e executa ao chegar
+        (estilo Tibia: arrastar/clicar algo longe te leva).
         """
         if max(abs(tx - p.x), abs(ty - p.y)) <= 1:
             fn()
             return
-        # desvia das outras criaturas perto (o destino é excluído)
-        avoid = {(bx, by) for (bx, by, bz) in self.by_pos
-                 if bz == p.z and (bx, by) != (tx, ty) and (bx, by) != (p.x, p.y)
-                 and abs(bx - p.x) <= 12 and abs(by - p.y) <= 12}
-        path = self.world.find_path_smart(p.z, p.x, p.y, tx, ty, avoid=avoid)
-        if path is None:                          # sem rota desviando: tenta direta
-            path = self.world.find_path_smart(p.z, p.x, p.y, tx, ty)
+        path = self._player_path(p, tx, ty)
         if path is None:
             return self.chat_to(p, "Nao ha caminho ate la.")
         if p.follow_on:                           # arrastar cancela o follow
@@ -456,6 +479,7 @@ class Game:
         tx, ty, tz, fn = p.pending
         if p.z == tz and max(abs(p.x - tx), abs(p.y - ty)) <= 1:
             p.pending = None
+            p.path = []          # PARA no SQM adjacente — nunca pisa no tile-alvo
             fn()
         elif not p.path:                          # caminho acabou sem chegar
             p.pending = None
@@ -508,8 +532,7 @@ class Game:
             if max(abs(end[0] - t.x), abs(end[1] - t.y)) > 1:
                 p.path = []
         if not p.path:
-            p.path = self.world.find_path_smart(p.z, p.x, p.y, t.x, t.y,
-                                                max_len=60) or []
+            p.path = self._player_path(p, t.x, t.y, max_len=60) or []
             p.path_target = (t.x, t.y)
 
     def player_combat(self, p: Player, now: float):
@@ -729,24 +752,42 @@ class Game:
                 m.target_id, target = best[1].id, best[1]
 
         if target:
-            if self.dist(m, target) <= 1:
+            d = self.dist(m, target)
+            if d <= 1:
                 self.face(m, target.x, target.y)
                 if now >= m.next_attack:
                     self.monster_swing(m, target, now)
-                # cerca o jogador: reposiciona com frequência moderada para os
-                # SQMs livres ao redor do alvo (comportamento dinâmico, sem
-                # ficar preso no mesmo tile), sempre em passo CARDEAL
+                # fica QUASE sempre parado atacando; só reposiciona de vez em
+                # quando E apenas se isso espalhar melhor o cerco (não "dança")
                 elif now >= m.next_move:
-                    m.next_move = now + m.step_dur
-                    if random.random() < 0.35:
+                    m.next_move = now + m.step_dur * 2
+                    if random.random() < 0.20:
                         self._reposition(m, target)
             elif now >= m.next_move:
-                m.next_move = now + m.step_dur
-                self.step_toward(m, target.x, target.y)
+                # 2a camada: alvo já cercado e sem vaga adjacente — NÃO fica
+                # dançando/recalculando; mantém o alvo, vira-se e espera a vaga
+                if self._target_boxed(target):
+                    self.face(m, target.x, target.y)
+                    m.next_move = now + m.step_dur * 3
+                    m.follow_path = []
+                else:
+                    m.next_move = now + m.step_dur
+                    self.step_toward(m, target.x, target.y)
         elif now >= m.next_move:
             m.next_move = now + m.step_dur * 2
             if random.random() < 0.3:
                 self.wander(m)
+
+    def _target_boxed(self, target) -> bool:
+        """True se NÃO há nenhum tile livre adjacente ao alvo (cercado)."""
+        for (dx, dy) in DIRS.values():
+            nx, ny = target.x + dx, target.y + dy
+            if (self.world.walkable(nx, ny, target.z)
+                    and not self.occupied(nx, ny, target.z)
+                    and not self.world.in_pz(nx, ny, target.z)
+                    and (nx, ny, target.z) not in self.world.no_monster):
+                return False
+        return True
 
     def _reposition(self, m: Monster, target):
         """
@@ -777,8 +818,10 @@ class Game:
                                      Monster))
 
         random.shuffle(cands)                       # desempate natural
-        cands.sort(key=lambda c: crowd(c[2], c[3]))
-        ox, oy = cands[0][0], cands[0][1]
+        cands.sort(key=lambda c: crowd(c[2], c[3]))  # prefere o lado menos lotado
+        ox, oy, nx, ny = cands[0]
+        # anda para o tile escolhido (a frequência é controlada pela chance de
+        # 20% em monster_ai; aqui só escolhemos um SQM cardeal válido p/ cercar)
         self._monster_step(m, ox, oy)
 
     def _monster_step(self, m: Monster, ox: int, oy: int) -> bool:
@@ -858,6 +901,31 @@ class Game:
         dx, dy = DIRS[random.choice(entities.CARDINALS)]
         self._monster_step(m, dx, dy)
 
+    def npc_ai(self, npc: Npc, now: float):
+        """
+        NPC anda OCASIONALMENTE um passo cardeal dentro do raio de casa
+        (dá vida à cidade sem sair do lugar nem atrapalhar a navegação).
+        NPCs ficam em by_pos → o pathfinding do jogador já os contorna.
+        """
+        if not npc.walks or now < npc.next_move:
+            return
+        npc.next_move = now + random.randint(npc.walk_min, npc.walk_max)
+        if random.random() < 0.6:              # nem todo timer vira passo
+            return
+        hx, hy = npc.home
+        dirs = [DIRS[d] for d in entities.CARDINALS]
+        random.shuffle(dirs)
+        for ox, oy in dirs:
+            nx, ny = npc.x + ox, npc.y + oy
+            # dentro do raio, andável, livre e fora de buracos/escadas
+            if (max(abs(nx - hx), abs(ny - hy)) <= npc.walk_radius
+                    and self.world.walkable(nx, ny, npc.z)
+                    and not self.occupied(nx, ny, npc.z)
+                    and (nx, ny, npc.z) not in self.world.no_monster):
+                facing = ("e" if ox > 0 else "w") if ox else ("s" if oy > 0 else "n")
+                self.move_creature(npc, nx, ny, facing, NPC_STEP_MS)
+                return
+
     def spawn_from_zone(self, zone: dict):
         """Spawn imediato (povoamento inicial do servidor, sem aviso)."""
         spot = self.world.random_spot_in_zone(zone, self.occupied)
@@ -909,9 +977,11 @@ class Game:
         fed = p.is_fed(now)                    # comida ou anel da vida
         hp_ms = config.REGEN_HP_MS_FED if fed else config.REGEN_HP_MS_BASE
         mp_ms = config.REGEN_MP_MS_FED if fed else config.REGEN_MP_MS_BASE
+        # HP NÃO regenera dentro da zona de proteção (poção/magia ainda curam)
+        in_pz = self.world.in_pz(p.x, p.y, p.z)
         if now >= p.next_hp_regen:
             p.next_hp_regen = now + hp_ms
-            if p.hp < p.maxhp:
+            if p.hp < p.maxhp and not in_pz:
                 p.hp += 1
                 p.send(p.stats_payload())
                 self.broadcast_hp(p)
@@ -1147,6 +1217,11 @@ class Game:
             return
         if not getattr(m, "pushable", True):
             return self.chat_to(p, "Voce nao consegue empurrar isso.")
+        now = now_ms()
+        if now < p.next_push:                  # cooldown do jogador (anti-spam)
+            return
+        if now < getattr(m, "push_until", 0.0):  # criatura ainda concluindo o passo
+            return
         tx, ty = int(msg.get("tx", m.x)), int(msg.get("ty", m.y))
         # jogador encostado na criatura E destino encostado na criatura
         if max(abs(p.x - m.x), abs(p.y - m.y)) > 1:
@@ -1167,7 +1242,9 @@ class Game:
         diagonal = dx != 0 and dy != 0
         dur = m.step_dur * (DIAGONAL_STEP_FACTOR if diagonal else 1)
         self.move_creature(m, tx, ty, facing, dur)
-        m.next_move = max(m.next_move, now_ms() + dur)         # anti-spam leve
+        m.next_move = max(m.next_move, now + dur)   # AI espera concluir o passo
+        m.push_until = now + dur                    # só re-empurra após concluir
+        p.next_push = now + PUSH_CD_MS              # cooldown do jogador
         m.follow_path = []
 
     def h_pickup(self, p: Player, msg):
@@ -1472,7 +1549,9 @@ class Game:
         self.chat_to(p, "Nao ha nada para pegar ai.")
 
     def h_move_ground(self, p: Player, msg):
-        """Arrasta um item/corpo do chão; anda até a origem se estiver longe."""
+        """Arrasta um item do chão: o personagem ANDA até encostar no item
+        (para no SQM anterior, adjacente) e SÓ ENTÃO move/joga. O destino pode
+        ser longe (arremessar vários SQM pra frente)."""
         fx, fy = int(msg.get("fx", p.x)), int(msg.get("fy", p.y))
         tx, ty = int(msg.get("tx", p.x)), int(msg.get("ty", p.y))
         count = msg.get("count")
@@ -1480,8 +1559,13 @@ class Game:
                         lambda: self._do_move_ground(p, fx, fy, tx, ty, count))
 
     def _do_move_ground(self, p: Player, fx, fy, tx, ty, count=None):
-        # destino fora de alcance (andou até a origem): traz para os pés
-        if max(abs(tx - p.x), abs(ty - p.y)) > DROP_RANGE \
+        # trava: só move um item COM o qual se tem contato (1 SQM). O _walk_then
+        # já anda até encostar; aqui é a garantia de que nunca move com gap.
+        if max(abs(p.x - fx), abs(p.y - fy)) > 1:
+            return
+        # destino = o tile escolhido (pode jogar longe, dentro do alcance de
+        # arremesso e da tela); fora disso ou em parede, cai aos pés do jogador
+        if max(abs(tx - p.x), abs(ty - p.y)) > THROW_RANGE \
                 or not self.world.walkable(tx, ty, p.z):
             tx, ty = p.x, p.y
         pile = self.world.ground_at(fx, fy, p.z)
