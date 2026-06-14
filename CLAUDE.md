@@ -21,6 +21,10 @@ python tools/clean_test_accounts.py  → apaga contas smoke%/demo%/warnobs%
 - Preview do Claude Code: `OT/.claude/launch.json` tem a config `fibula`
   (`python -u server/main.py`, `autoPort: false`). Para recarregar código do
   SERVIDOR: `preview_stop` + `preview_start`. Cliente: só F5 no browser.
+- **Cache desligado** (`httpstatic.py` manda `Cache-Control: no-store ...`): o
+  browser NUNCA guarda JS/CSS, então F5 sempre traz a versão nova. Evita o clássico
+  "corrigi mas o usuário continua vendo o bug" (era a causa de reclamações
+  repetidas do mesmo problema entre turnos).
 - **O usuário costuma estar JOGANDO na página do preview** (Admin Lemos).
   Não dê `location.reload()` na página dele; peça para ele dar F5.
   O smoke test AVISA quando há outros jogadores online (eles podem "roubar"
@@ -77,14 +81,49 @@ python tools/clean_test_accounts.py  → apaga contas smoke%/demo%/warnobs%
   dragão (50,60), **lorde dragão (30,72)**.
 - Conexões entre andares (meta do map.json):
   - `portals` (escadas): (66,26) colinas trolls e (84,12) cemitério.
-    **DESCER é automático ao pisar; SUBIR só clicando** (use_stairs).
-  - `holes`: buraco em (75,48,0) → cai ao pisar (check_hole).
-  - `ropes`: rope spot (75,48,1) → use item corda para subir.
+    **DESCER é AUTOMÁTICO ao pisar** (igual buraco; `check_hole` trata escada com
+    dest z>p.z), **SUBIR só ao CLICAR** (`use_stairs`/`use_portal`) — pisar na
+    escada-up NÃO sobe (evita bounce). Itens largados na escada-down também CAEM.
+  - `holes`: buraco em (75,48,0) → o JOGADOR cai ao pisar (check_hole) E **itens
+    jogados ali CAEM pro andar de baixo** (`_ground_drop` checa holes E down-portals).
+  - `ropes`: rope spot (75,48,1) → corda. O destino `to` (75,49,0) é a SAÍDA do
+    buraco: quem sobe (jogador, ou item/criatura puxados) aparece SEMPRE nesse tile.
+  - **Corda na ESCADA**: NÃO sobe você (escada se usa clicando). Roping a escada que
+    desce, do andar de cima, PUXA o que está no SQM DIRETAMENTE abaixo (mesmo x,y) e
+    POUSA no SQM embaixo da escada (onde quem SOBE a escada-up aparece — andável,
+    nunca em cima do tile de queda). `_rope_target`: `exit = ropes[below] OR
+    portals[below]` (a saída de subida do tile de baixo). Vale p/ item/jogador/bicho.
+- **Pontos de entrada/saída são FIXOS** (`teleport_exact`): cair no buraco, descer/
+  subir escada e ser puxado pela corda levam SEMPRE ao SQM exato do destino. Se já
+  houver criatura/jogador lá, **EMPILHA** (ocupam o mesmo SQM) — ninguém é deslocado.
+  `by_pos` é `(x,y,z) -> [Creature]` (LISTA). `occupied()` (caminhar normal) bloqueia
+  qualquer tile com criatura, então só quedas/corda/escada empilham; ao se separarem,
+  o caminhar normal impede re-empilhar. `creature_at()` = primeira da lista.
 - Lago a oeste (x≤13) — pesca na praia (x=14).
-- Monstros NUNCA pisam em portals/holes/ropes (`world.no_monster`).
+- `world.no_monster = holes | down-portals` (tiles de QUEDA): monstros NÃO pisam em
+  buraco do solo NEM em escada-que-desce (fica esquisito um bicho parado em cima sem
+  cair). MAS pisam na escada-de-SUBIR e rope spots — que ficam no SQM DIRETAMENTE
+  abaixo da escada/buraco de cima. A corda puxa exatamente desse SQM de baixo (não
+  está em no_monster), então dá pra puxar o bicho que está lá.
 - Subsolo é escuro no cliente (círculo de luz ao redor do player).
-- Respawn: lento (45s ratos … 15min lorde dragão); **bolinha azul pulsante
-  5s antes** do nascimento (`spawn_warn`). Aviso faz parte do tempo total.
+- **BURACO/ROPE = PROPRIEDADE DO TILE, não objeto** (refeito): saíram do array
+  `objects`; o comportamento vive em `world.holes`/`world.ropes` (por posição) e o
+  SPRITE vai em `meta.decos` (`[{x,y,z,sprite}]`), desenhado na **camada 1** (sob
+  os itens) via `Render.decoSprite`. Assim o buraco nunca esconde item nenhum, e o
+  "ser buraco" não depende do sprite. Escadas continuam objetos andáveis (camada 1).
+  Objetos `walk:false` (árvore/parede/altar) vão na camada 3 com as criaturas.
+- **Item no buraco de DESCIDA cai** pro andar de baixo (igual jogador descendo):
+  todo drop passa por `Game._ground_drop(x,y,z,item)`, que relocaliza pro destino
+  do hole. (h_drop, h_drop_equip, _do_move_ground, h_loot_ground).
+- Respawn: tempo-base por zona (45s ratos … 15min lorde dragão) × `RESPAWN_MULT`
+  (config, **=3** hoje, pq estava nascendo rápido demais) → ratos 135s etc.;
+  **bolinha azul pulsante 5s antes** do nascimento (`spawn_warn`, dentro do total).
+- **Itens no chão NÃO somem sozinhos** (persistem até reiniciar = "Server Save").
+  Só **CORPOS de bicho** têm `decay` (somem em `CORPSE_DECAY_S`); item largado,
+  baú e loot tirado do corpo ficam SEM `decay`. `decay_tick` só remove quem tem
+  `decay` expirado (`i.get("decay")`). Drops (h_drop/h_drop_equip/loot_ground) não
+  setam mais decay. (Não há comando de Server Save ainda — restart do `start.bat`
+  é o que zera os itens do chão.)
 
 ## 5. Sistemas de gameplay (estado ATUAL — decisões do usuário)
 
@@ -101,12 +140,86 @@ python tools/clean_test_accounts.py  → apaga contas smoke%/demo%/warnobs%
 - Mochilas com conteúdo não contam em inv_count/inv_remove (não vendem por
   engano). Peso conta o conteúdo aninhado (`Player.item_weight`).
 
-### Equipamento (10 slots)
+### Equipamento (10 slots) — arma/escudo em QUALQUER mão
 `helmet necklace backpack armor weapon shield legs boots ring ammo`
 (nomes internos antigos mantidos por compat de save; cliente mostra
 Head/Right Hand/Left Hand etc., em cruz). `TYPE_TO_SLOT` em entities.py.
+- **Mãos (slots weapon+shield) intercambiáveis:** `weapon_def`/`defense` varrem AS
+  DUAS mãos (arma = type "weapon" em qualquer mão; escudo = type "shield"). Arrastar
+  pro slot RESPEITA a mão: o cliente manda `eslot` no `equip`, e `_equip_hand(dest)`
+  põe naquela mão (o que estava lá volta pro inv). Sem eslot (duplo-clique) escolhe
+  mão livre. Arrastar de uma mão DIRETO p/ a outra = `equip_move` (swap entre mãos,
+  sem passar pela mochila). NÃO há mais arma de 2 mãos — **qualquer arma (incl. o
+  arco id 17) vai em qualquer mão**. O caminho `twohand` em `_equip_hand` continua
+  no código, mas nenhum item ativa hoje.
+  **`equip_move` SÓ vale mão↔mão** (weapon/shield); arrastar item equipado pro
+  ÍCONE DA BACKPACK (ou qualquer outro destino que não seja a outra mão) =
+  `unequip` (cai dentro da bag via `inv_add`). Sem o gate `HANDS(a,b)` no
+  `Drag.resolve`, desequipar pela bag virava um `equip_move` morto.
 - Anel da vida (34): efeito "fed" (regen rápido). Amuleto proteção (33): +2 arm.
 - Itens equipados não vendem no NPC (badge "equipado" na loja + msg).
+- **Compra/venda em QUANTIDADE no NPC**: o botão Comprar/Vender abre o seletor de
+  quantidade (`UI.askQuantity`, mesmo do split de pilha). Comprar: max = quanto o
+  ouro paga (`floor(gold/price)`, teto 100), começa em 1. Vender: max = quanto tem,
+  começa no total. Manda `count` no `npc_buy`/`npc_sell`; o servidor (`npcs.buy`/
+  `sell`) já clampa 1..100 e valida ouro/`give` tudo-ou-nada.
+
+### Usar item: SEM seleção; duplo-clique e clique-DIREITO
+NÃO há mais "selecionar item" nem botões Usar/Equipar/Dropar (`#inv-actions`,
+`selectSlot` REMOVIDOS). Dropar = arrastar pro chão. **EQUIPAR = SÓ arrastando** pro
+slot (duplo-clique NÃO equipa mais). Duplo-clique (`smartAction`) só USA consumível/
+ferramenta (food/potion/tool → `use`); arma/armadura não fazem nada no duplo-clique.
+**Clique-DIREITO** (`Input.handleItemRightClick`,
+na mochila / corpo / chão): comida → `use_item` (come na hora, em qualquer lugar);
+poção ou corda → entra no modo "USAR-COM" (`UseWith` no input.js: `body.use-with`
+→ cursor `cell`; o PRÓXIMO clique esquerdo escolhe o alvo — poção num jogador
+visível = cura; corda num buraco/rope spot adjacente = sobe; ESC cancela); demais
+itens → nada. Server: `_source_item` resolve a fonte (inv|container|ground) e
+devolve `consume`; `h_use_item` (imediato) e `h_use_with` (com alvo `tid` ou
+`tx,ty`).
+- **LOOK no mapa — WALK é instantâneo, sem delay nenhum.** Dois jeitos de olhar:
+  1. **SHIFT + clique** (recomendado, padrão Tibia): confiável, sem timing. Em
+     `onCanvasClick`, `ev.shiftKey` → manda `look` e NÃO anda; o mousedown ignora
+     o arrasto com Shift. NÃO grava `lastLookMs` (dá pra olhar vários tiles seguidos).
+  2. **Esquerdo + Direito pressionados JUNTOS** (bônus): detectado no `mousedown`
+     (`ev.buttons&1 && ev.buttons&2`) → `doLook` na hora. Só funciona se os dois
+     estiverem pressionados ao mesmo tempo (segura um, aperta o outro); se soltar o
+     1º antes, o walk instantâneo já saiu — por isso o Shift é o jeito robusto.
+  `doLook` grava `lastLookMs`; `onCanvasClick`/contextmenu engolem o click/uso nos
+  `LOOK_SUPPRESS=350ms` seguintes (não vira walk). Não há mais agendamento de walk.
+- **Modo "usar-com" cancela em QUALQUER clique fora do mapa.** Um listener global
+  de `mousedown` (capture) faz: se `UseWith.active` e o alvo não está em
+  `#canvas-wrap` (ou seja, clicou na interface) → `UseWith.cancel()` (cursor volta).
+  Clicar num tile válido do mapa resolve; ESC também cancela.
+- **Corda (`_rope_use`/`_rope_pull_up`) usa o ATRIBUTO do tile:** rope spot → o
+  jogador sobe; buraco de descida → PUXA UM ente do SQM logo abaixo, na ordem
+  ITENS (um por uso) → JOGADOR → CRIATURA (monstro precisa de `ropeable`, default
+  True; futuro = marcar por-monstro no JSON). **TUDO pousa na SAÍDA do buraco**
+  (`world.ropes[below]`, via `teleport_exact` — o MESMO tile onde um jogador surge
+  ao subir), NUNCA aos pés do puxador. Se o puxador está nesse tile, o puxado
+  EMPILHA nele (não desloca o puxador); a criatura viva dá o próximo passo pro lado
+  (IA) e aí o caminhar normal impede re-empilhar. Verificado live: item cai; corda
+  puxa item/jogador/corpo/monstro pro tile de saída; puxador NÃO é deslocado;
+  self-climb; prioridade itens-primeiro; monstro ocupa o SQM de baixo e é puxado.
+- **Minimapa:** scroll do mouse dá zoom (`wheel` → `Minimap.zoom`); botões +/−
+  ficam inset (3px) com bordinha igual à rosa dos ventos.
+- **Abrir loot (corpo/baú/container no chão) = clique DIREITO** (`open_container`
+  no contextmenu do canvas, junto com come/usar-com). O clique ESQUERDO NÃO abre
+  mais container (só pega itens não-container; container cai p/ walk). Futuro: config
+  pro player escolher esquerdo ou direito.
+- **Pegar item do chão clicando:** clique LIMPO (sem mexer) → `onCanvasClick` manda
+  `pickup`. Clique COM tremida (>5px vira arrasto) que solta no MESMO tile também
+  manda `pickup` (`Drag.resolve` ground→mesmo-tile = pegar) — antes não fazia nada,
+  por isso "só dava pegar arrastando pra bag". As duas vias = pickup, robusto.
+- **Item Baú (id 80):** CONTAINER de 8 slots (`container:true, capacity:8`) E
+  `blocking:true`. Abre com clique direito no chão (8 slots, guarda/loot via drag,
+  conteúdo persiste). NÃO é equipável (type "misc" → fora de `TYPE_TO_SLOT`, então
+  não vai no slot backpack) — só dá pra CARREGAR dentro da mochila (item comum no
+  inv, com `contents`). Bloqueia o tile (ver `blocking_ids` abaixo).
+- **Item Baú — bloqueio:** ninguém anda em cima — nem player nem
+  monstro. `world.walkable` checa `world.blocking_ids` (ids com `blocking`) contra
+  os itens do chão do tile; pathfinding e movimento contornam. É pegável (drag/click)
+  pra reposicionar. Itens no chão são runtime → somem no restart do `start.bat`.
 
 ### Capacity (CAP)
 Peso em oz em TODO item (`weight` no items.json). `CAP = 350 + level*10`.

@@ -35,6 +35,16 @@ const Render = {
     requestAnimationFrame(() => this.frame());
   },
 
+  /** Sprite do deco (buraco/rope) num tile, ou null. Lookup montado 1x. */
+  decoSprite(x, y, z) {
+    if (!this._decoMap) {
+      this._decoMap = new Map();
+      const decos = (G.map && G.map.meta && G.map.meta.decos) || [];
+      for (const d of decos) this._decoMap.set(d.z + ":" + d.x + "," + d.y, d.sprite);
+    }
+    return this._decoMap.get(z + ":" + x + "," + y) || null;
+  },
+
   /** Desenha um sprite (por nome) em coordenadas de tela (pixel inteiro). */
   blit(name, dx, dy) {
     const i = this.sprites.index[name];
@@ -153,6 +163,16 @@ const Render = {
         if (meta && meta.sprite) {
           this.blit(meta.sprite, x * T - this.camX, y * T - this.camY);
         }
+        // objetos ANDÁVEIS (escadas) são decoração de chão: ficam SOB os itens
+        const o = floor.objects[y][x];
+        if (o) {
+          const om = G.map.objectMeta[o];
+          if (om && om.walk) this.blit(om.sprite, x * T - this.camX, y * T - this.camY);
+        }
+        // DECOS (buraco, rope spot): propriedade visual do tile, SOB os itens —
+        // o sprite nunca esconde itens largados em cima
+        const deco = this.decoSprite(x, y, Z);
+        if (deco) this.blit(deco, x * T - this.camX, y * T - this.camY);
       }
     }
 
@@ -195,7 +215,8 @@ const Render = {
         const o = floor.objects[y][x];
         if (o) {
           const meta = G.map.objectMeta[o];
-          if (meta) this.blit(meta.sprite, x * T - this.camX, y * T - this.camY);
+          // andáveis já foram desenhados na camada do chão (sob os itens)
+          if (meta && !meta.walk) this.blit(meta.sprite, x * T - this.camX, y * T - this.camY);
         }
       }
       // criaturas desta linha

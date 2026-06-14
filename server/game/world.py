@@ -36,9 +36,13 @@ class World:
                       for h in m["meta"].get("holes", [])}
         self.ropes = {tuple(r["from"]): tuple(r["to"])
                       for r in m["meta"].get("ropes", [])}
-        # tiles proibidos para monstros (escadas, buracos, rope spots)
-        self.no_monster = (set(self.portals) | set(self.holes)
-                           | set(self.ropes))
+        # tiles que monstros não pisam: tiles de QUEDA — buracos (`holes`) E
+        # escadas que DESCEM (portal com dest mais fundo). Monstro não fica em
+        # cima de buraco "parado sem cair" (fica esquisito). Mas PISAM em
+        # escadas-de-subir, rope spots e nos tiles de POUSO lá embaixo — então
+        # ainda dá pra puxá-los com a corda de cima.
+        down_portals = {pos for pos, dst in self.portals.items() if dst[2] > pos[2]}
+        self.no_monster = set(self.holes) | down_portals
 
         # pré-computa a grade de andabilidade por andar
         gwalk = {int(k): v["walk"] for k, v in m["groundMeta"].items()}
@@ -58,18 +62,33 @@ class World:
         # itens no chão: (x, y, z) -> [{"id", "count", "decay"(ms monotonic)}]
         self.ground_items = {}
 
-        # payload do mapa enviado a cada cliente no login (sem os spawns)
+        # ids de itens que BLOQUEIAM o tile (ex.: baú): ninguém anda em cima —
+        # nem player nem monstro. Checado dinamicamente em walkable().
+        self.blocking_ids = {iid for iid, idef in data.ITEMS.items()
+                             if idef.get("blocking")}
+
+        # payload do mapa enviado a cada cliente no login (sem os spawns).
+        # `decos` = sprites de tiles especiais (buraco/rope), desenhados SOB
+        # os itens — o buraco é uma PROPRIEDADE DO TILE, não um objeto que tampa.
         self.client_map = {
             "width": self.w, "height": self.h, "floors": self.floors,
             "groundMeta": m["groundMeta"], "objectMeta": m["objectMeta"],
-            "meta": {"temple": list(self.temple), "pz": self.pz},
+            "meta": {"temple": list(self.temple), "pz": self.pz,
+                     "decos": m["meta"].get("decos", [])},
         }
 
     # ------------------------------------------------------------- terreno
 
     def walkable(self, x: int, y: int, z: int) -> bool:
-        return (0 <= z < self.depth and 0 <= x < self.w and 0 <= y < self.h
-                and self.walk_grids[z][y][x])
+        if not (0 <= z < self.depth and 0 <= x < self.w and 0 <= y < self.h
+                and self.walk_grids[z][y][x]):
+            return False
+        # item bloqueante no chão (baú) torna o SQM intransponível p/ todos
+        if self.blocking_ids:
+            pile = self.ground_items.get((x, y, z))
+            if pile and any(it["id"] in self.blocking_ids for it in pile):
+                return False
+        return True
 
     def in_pz(self, x: int, y: int, z: int) -> bool:
         """Zona de proteção (a cidade, só na superfície)."""
@@ -258,11 +277,13 @@ class World:
         return {"type": "ground_full", "tiles": tiles}
 
     def decay_tick(self, now: float):
-        """Remove itens expirados. Retorna a lista de tiles alterados."""
+        """Remove só itens com `decay` EXPIRADO (corpos de bicho). Itens largados
+        no chão (e baús) NÃO têm `decay` → NUNCA somem sozinhos; só no Server Save.
+        Retorna a lista de tiles alterados."""
         changed = []
         for pos in list(self.ground_items.keys()):
             pile = self.ground_items[pos]
-            kept = [i for i in pile if i["decay"] > now]
+            kept = [i for i in pile if i.get("decay") is None or i["decay"] > now]
             if len(kept) != len(pile):
                 if kept:
                     self.ground_items[pos] = kept

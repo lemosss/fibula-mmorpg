@@ -79,6 +79,14 @@ const Drag = {
     this.hoverEl = null;
   },
 
+  /** Cancela um arrasto em andamento (ex.: virou um LOOK com 2 botões). */
+  reset() {
+    this.src = null;
+    this.started = false;
+    if (this.ghost) this.ghost.classList.add("hidden");
+    this.clearHighlight();
+  },
+
   onUp(ev) {
     if (!this.src) return;
     const src = this.src;
@@ -151,16 +159,24 @@ const Drag = {
       } else if (intoBag) {
         // o item já está na mochila — nunca troca a bag equipada
       } else if (eqSlot) {
-        Net.send({ type: "equip", slot: src.i });   // equipa (bag só se nenhuma)
+        // equipa NA MÃO/slot escolhido (manda o eslot p/ respeitar a mão)
+        Net.send({ type: "equip", slot: src.i, eslot: eqSlot.dataset.eslot });
       } else if (tile) {
         this.commit(
           n => Net.send({ type: "drop", slot: src.i, x: tile.x, y: tile.y,
                           count: n }), count, stackable, ctrl);
       }
     } else if (src.kind === "equip") {
+      const HANDS = (a, b) => (a === "weapon" || a === "shield") &&
+                              (b === "weapon" || b === "shield");
+      const dst = eqSlot && eqSlot.dataset.eslot;
       if (tile) {
         Net.send({ type: "drop_equip", eslot: src.eslot, x: tile.x, y: tile.y });
+      } else if (dst && dst !== src.eslot && HANDS(src.eslot, dst)) {
+        // mão -> outra mão: troca direto (sem passar pela mochila)
+        Net.send({ type: "equip_move", from: src.eslot, to: dst });
       } else {
+        // qualquer outro destino (mochila, ícone da bag, fora) = desequipa pra bag
         Net.send({ type: "unequip", eslot: src.eslot });
       }
     } else if (src.kind === "ground") {
@@ -174,10 +190,15 @@ const Drag = {
         this.commit(n => Net.send({ type: "pickup", x: src.x, y: src.y,
                                     count: n }), count, stackable, ctrl);
       } else if (tile) {
-        if (tile.x !== src.x || tile.y !== src.y) this.commit(
-          n => Net.send({ type: "move_ground", fx: src.x, fy: src.y,
-                          tx: tile.x, ty: tile.y, count: n }),
-          count, stackable, ctrl);
+        if (tile.x !== src.x || tile.y !== src.y) {
+          this.commit(
+            n => Net.send({ type: "move_ground", fx: src.x, fy: src.y,
+                            tx: tile.x, ty: tile.y, count: n }),
+            count, stackable, ctrl);
+        } else {
+          // soltou no MESMO tile = foi só um clique (com leve tremida) = PEGAR
+          Net.send({ type: "pickup", x: src.x, y: src.y });
+        }
       } else if (invSlot || inCols) {
         this.commit(n => Net.send({ type: "pickup", x: src.x, y: src.y,
                                     count: n }), count, stackable, ctrl);
@@ -208,8 +229,67 @@ const Drag = {
     }
   },
 };
+
+/* ===================== USAR-COM (poção/corda: clica item, depois alvo) ===== */
+const UseWith = {
+  active: false,
+  source: null,                 // {src:"inv",i} | {src:"container",...} | {src:"ground",...}
+
+  begin(source) {
+    this.active = true;
+    this.source = source;
+    document.body.classList.add("use-with");   // cursor vira "alvo"
+  },
+
+  cancel() {
+    this.active = false;
+    this.source = null;
+    document.body.classList.remove("use-with");
+  },
+
+  /** Clicou no alvo: criatura (poção num player) ou tile (corda no buraco). */
+  resolve(tile, entity) {
+    if (!this.active || !this.source) return;
+    const msg = Object.assign({ type: "use_with" }, this.source);
+    if (entity) msg.tid = entity.id;
+    if (tile) { msg.tx = tile.x; msg.ty = tile.y; }
+    Net.send(msg);
+    this.cancel();
+  },
+};
+
 const Input = {
   held: new Set(),
+  leftDown: false,           // botão esquerdo pressionado (p/ LOOK esq+dir)
+  lastLookMs: 0,             // instante do último LOOK de 2 botões (anti-walk)
+  LOOK_SUPPRESS: 350,        // janela p/ engolir o click que vem logo após o LOOK
+
+  /** LOOK (esquerdo + direito juntos): olha o tile e suprime o click seguinte.
+   *  Sem delay no andar — a detecção dos 2 botões é no mousedown (ev.buttons). */
+  doLook(t) {
+    Drag.reset();
+    this.lastLookMs = performance.now();
+    Net.send({ type: "look", x: t.x, y: t.y });
+  },
+
+  /**
+   * Clique-direito num item (mochila/corpo). Com o ESQUERDO também pressionado
+   * (esq+dir JUNTOS) = LOOK. Direito sozinho: comida = come; poção/corda =
+   * usar-com; resto = nada.
+   */
+  handleItemRightClick(ev, def, source, lookMsg) {
+    ev.preventDefault();
+    if (this.leftDown) {                    // esq + dir = LOOK
+      Drag.reset();
+      if (lookMsg) Net.send(lookMsg);
+      return;
+    }
+    if (def.type === "food") {
+      Net.send(Object.assign({ type: "use_item" }, source));
+    } else if (def.type === "potion" || def.tool === "rope") {
+      UseWith.begin(source);
+    }
+  },
 
   DIR_KEYS: {
     ArrowUp: "n", KeyW: "n",
@@ -241,7 +321,21 @@ const Input = {
     Drag.init();
     document.addEventListener("keydown", (ev) => this.onKeyDown(ev));
     document.addEventListener("keyup", (ev) => this.held.delete(ev.code));
-    window.addEventListener("blur", () => this.held.clear());
+    window.addEventListener("blur", () => { this.held.clear(); this.leftDown = false; });
+    // rastreia o botão esquerdo (LOOK = esquerdo + direito juntos)
+    document.addEventListener("mousedown", (ev) => {
+      if (ev.button === 0) this.leftDown = true;
+      // modo "usar-com" ativo: clicar em QUALQUER lugar fora do mapa (a
+      // interface toda) cancela e devolve o cursor ao normal
+      if (UseWith.active) {
+        const onMap = ev.target && ev.target.closest &&
+                      ev.target.closest("#canvas-wrap");
+        if (!onMap) UseWith.cancel();
+      }
+    }, true);
+    document.addEventListener("mouseup", (ev) => {
+      if (ev.button === 0) this.leftDown = false;
+    }, true);
 
     // anda continuamente enquanto a(s) tecla(s) estiverem seguradas
     setInterval(() => {
@@ -254,11 +348,20 @@ const Input = {
     canvas.addEventListener("click", (ev) => this.onCanvasClick(ev));
     // arrasto começando num tile: criatura (empurrar) ou item no chão
     canvas.addEventListener("mousedown", (ev) => {
-      if (ev.button !== 0 || !G.loggedIn) return;
+      if (!G.loggedIn) return;
       const me = myPlayer();
       if (!me) return;
       const t = Render.screenToTile(ev.clientX, ev.clientY);
       if (!t) return;                          // clicou na faixa preta
+      // LOOK = ESQUERDO + DIREITO pressionados JUNTOS (qualquer ordem). Como você
+      // segura um e aperta o outro, no 2º mousedown os dois bits estão em
+      // ev.buttons → dispara o look NA HORA, sem atrasar o andar.
+      if ((ev.buttons & 1) && (ev.buttons & 2)) {
+        ev.preventDefault();
+        return this.doLook(t);
+      }
+      if (ev.button !== 0) return;
+      if (ev.shiftKey) return;                 // Shift+clique = LOOK (não arrasta)
       // PRIORIDADE: itens no chão primeiro. Só quando NÃO há item é que o
       // arrasto pega a criatura (empurrar). Assim arrastar um SQM com bicho
       // EM CIMA de itens move os itens; depois de tirá-los, arrasta o bicho.
@@ -278,8 +381,29 @@ const Input = {
     });
     canvas.addEventListener("contextmenu", (ev) => {
       ev.preventDefault();
+      const now = performance.now();
+      // o LOOK normalmente já disparou no mousedown do 2º botão; aqui só evita
+      // o "direito sozinho" logo depois e cobre o caso raro de só o contextmenu
+      if (now - this.lastLookMs < this.LOOK_SUPPRESS) return;
       const t = Render.screenToTile(ev.clientX, ev.clientY);
-      if (t) Net.send({ type: "look", x: t.x, y: t.y });
+      if (!t) return;
+      if (this.leftDown) {                         // segura ESQ e solta DIR = LOOK
+        return this.doLook(t);
+      }
+      // direito sozinho: corpo/baú = abre loot; comida = come; poção/corda = usar-com
+      const me = myPlayer();
+      const pile = me && G.ground.get(groundKey(t.x, t.y, me.z || 0));
+      if (pile && pile.length) {
+        const def = ItemDefs[pile[pile.length - 1].id] || {};
+        if (def.container) {                    // corpo/baú: abre (ou fecha) o loot
+          if (G.containers.has(t.x + "," + t.y)) UI.closeContainer(t.x, t.y);
+          else Net.send({ type: "open_container", x: t.x, y: t.y });
+        } else if (def.type === "food") {
+          Net.send({ type: "use_item", src: "ground", x: t.x, y: t.y });
+        } else if (def.type === "potion" || def.tool === "rope") {
+          UseWith.begin({ src: "ground", x: t.x, y: t.y });
+        }
+      }
     });
 
     const chatInput = UI.$("chat-input");
@@ -307,7 +431,8 @@ const Input = {
       return;
     }
     if (ev.key === "Escape") {
-      if (UI.mapOpen()) UI.closeMap();
+      if (UseWith.active) UseWith.cancel();    // cancela o modo "usar-com"
+      else if (UI.mapOpen()) UI.closeMap();
       else if (!UI.$("hotkeys-window").classList.contains("hidden"))
         UI.$("hotkeys-window").classList.add("hidden");
       else if (!UI.$("skills-window").classList.contains("hidden"))
@@ -318,7 +443,6 @@ const Input = {
         Net.send({ type: "stop" });            // para o autowalk
         if (G.targetId) Net.send({ type: "attack", id: 0 });
       }
-      UI.selectSlot(null);
       return;
     }
 
@@ -398,8 +522,23 @@ const Input = {
 
   onCanvasClick(ev) {
     if (!G.loggedIn) return;
+    // acabou de dar LOOK (esq+dir): ignora o click que o browser dispara depois,
+    // senão o personagem andaria até o tile olhado
+    if (performance.now() - this.lastLookMs < this.LOOK_SUPPRESS) return;
     const t = Render.screenToTile(ev.clientX, ev.clientY);
+    // modo "usar-com" ativo: este clique escolhe o alvo (poção/corda)
+    if (UseWith.active) {
+      if (t) UseWith.resolve(t, this.entityAt(t.x, t.y));
+      else UseWith.cancel();
+      return;
+    }
     if (!t) return;                            // clicou na faixa preta
+    // SHIFT + clique = LOOK (jeito confiável, sem timing de 2 botões e sem atrasar
+    // o andar). Não grava lastLookMs: dá pra olhar vários tiles em sequência.
+    if (ev.shiftKey) {
+      Drag.reset();
+      return Net.send({ type: "look", x: t.x, y: t.y });
+    }
     const e = this.entityAt(t.x, t.y);
     const me = myPlayer();
     const dist = me ? Math.max(Math.abs(t.x - me.x), Math.abs(t.y - me.y)) : 99;
@@ -430,19 +569,14 @@ const Input = {
     const pile = me && G.ground.get(groundKey(t.x, t.y, me.z || 0));
     if (pile && pile.length) {
       const topDef = ItemDefs[pile[pile.length - 1].id] || {};
-      if (topDef.container) {
-        // corpo/mochila: abre (servidor anda até lá se longe). Já aberto = fecha
-        if (G.containers.has(t.x + "," + t.y)) {
-          UI.closeContainer(t.x, t.y);         // fecha local + avisa servidor
-        } else {
-          Net.send({ type: "open_container", x: t.x, y: t.y });
-        }
-      } else {
+      // corpo/baú: abrir loot é só no clique DIREITO (futuro: config esq/dir).
+      // No esquerdo, só itens normais são pegos; container ignora e cai p/ walk.
+      if (!topDef.container) {
         Net.send({ type: "pickup", x: t.x, y: t.y });        // anda até lá se longe
+        return;
       }
-      return;
     }
     if (e) return;                                      // você mesmo: nada
-    Net.send({ type: "walkto", x: t.x, y: t.y });       // anda até o tile
+    Net.send({ type: "walkto", x: t.x, y: t.y });       // anda já (sem delay)
   },
 };

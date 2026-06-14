@@ -155,9 +155,13 @@ class Player(Creature):
         return max(120, int(1000 * config.GROUND_FRICTION / self.speed()))
 
     def weapon_def(self) -> dict:
-        """Definição da arma equipada ({} se desarmado)."""
-        w = self.equipment.get("weapon")
-        return data.item(w["id"]) if w else {}
+        """Definição da arma equipada ({} se desarmado). A arma pode estar em
+        QUALQUER mão (slot weapon OU shield) — escudo e arma trocam de mão."""
+        for slot in ("weapon", "shield"):
+            it = self.equipment.get(slot)
+            if it and data.item(it["id"]).get("type") == "weapon":
+                return data.item(it["id"])
+        return {}
 
     def weapon_atk(self) -> int:
         return self.weapon_def().get("atk", 5)                # 5 = soco
@@ -167,16 +171,18 @@ class Player(Creature):
         return self.weapon_def().get("wclass", "fist")
 
     def defense(self) -> int:
-        """Defesa total: armaduras + escudo escalado pela skill de escudo."""
+        """Defesa total: armaduras + escudo escalado pela skill de escudo.
+        O escudo pode estar em QUALQUER mão (slot weapon OU shield)."""
         total = 0
         for slot in ("helmet", "armor", "legs", "boots", "necklace", "ring"):
             it = self.equipment.get(slot)
             if it:
                 total += data.item(it["id"]).get("arm", 0)
-        sh = self.equipment.get("shield")
-        if sh:
-            sk = self.skills["shield"]["level"]
-            total += data.item(sh["id"]).get("def", 0) * sk // 20
+        for slot in ("weapon", "shield"):
+            it = self.equipment.get(slot)
+            if it and data.item(it["id"]).get("type") == "shield":
+                sk = self.skills["shield"]["level"]
+                total += data.item(it["id"]).get("def", 0) * sk // 20
         return total
 
     def has_ring_effect(self, effect: str) -> bool:
@@ -365,6 +371,9 @@ class Monster(Creature):
         # marcar bosses/criaturas fixas com "pushable": false no monsters.json
         self.pushable = d.get("pushable", True)
         self.push_until = 0.0                 # enquanto conclui o empurrão atual
+        # puxável por corda (estilo Tibia): hoje TODOS são; no futuro marca-se
+        # criaturas específicas com "ropeable": false no monsters.json
+        self.ropeable = d.get("ropeable", True)
 
 
 class Npc(Creature):

@@ -3,7 +3,6 @@
  * janelas flutuantes (skills, hotkeys), containers de loot e comércio.
  */
 const UI = {
-  selectedSlot: null,        // índice do slot da mochila selecionado
   tradeTab: "buy",
   activeChatTab: "default",
   chatBuffer: [],            // {channel, from, text} (máx. 400)
@@ -542,13 +541,15 @@ const UI = {
 
   // --------------------------------------- seletor de quantidade (split)
 
-  /** Abre o popup de quantidade. `cb(n)` recebe a quantidade escolhida. */
-  askQuantity(max, spriteName, cb) {
+  /** Abre o popup de quantidade. `cb(n)` recebe a quantidade escolhida.
+   *  `start` define o valor inicial (padrão = max, como no split de pilha). */
+  askQuantity(max, spriteName, cb, start) {
     const input = this.$("qty-input"), slider = this.$("qty-slider");
     const preview = this.$("qty-preview");
     this._qtyCb = cb;
+    const init = Math.max(1, Math.min(max, start == null ? max : start));
     input.max = max; slider.max = max;
-    input.value = max; slider.value = max;
+    input.value = init; slider.value = init;
     preview.innerHTML = "";
     if (spriteName) preview.appendChild(this.spriteCanvas(spriteName));
     const lbl = document.createElement("span");
@@ -647,10 +648,10 @@ const UI = {
             Drag.begin({ kind: "container", cx: m.x, cy: m.y, idx }, ev, def.sprite);
         };
         div.ondblclick = () => Net.send({ type: "loot", x: m.x, y: m.y, idx });
-        div.oncontextmenu = (ev) => {
-          ev.preventDefault();
-          Net.send({ type: "look_item", cidx: idx, cx: m.x, cy: m.y });
-        };
+        div.oncontextmenu = (ev) =>            // direito usa; esq+dir = olhar
+          Input.handleItemRightClick(ev, def,
+            { src: "container", cx: m.x, cy: m.y, idx },
+            { type: "look_item", cidx: idx, cx: m.x, cy: m.y });
       }
       grid.appendChild(div);
     }
@@ -703,7 +704,6 @@ const UI = {
       const div = document.createElement("div");
       div.className = "inv-slot";
       div.dataset.i = i;
-      if (i === this.selectedSlot) div.classList.add("selected");
       if (slot) {
         const def = ItemDefs[slot.id] || {};
         div.title = def.name || "?";
@@ -714,17 +714,13 @@ const UI = {
           n.textContent = slot.count;
           div.appendChild(n);
         }
-        div.onclick = () => this.selectSlot(i);
-        div.ondblclick = () => this.smartAction(i);
+        div.ondblclick = () => this.smartAction(i);   // duplo: usa consumível (não equipa)
         div.onmousedown = (ev) => {
           if (ev.button === 0) Drag.begin({ kind: "inv", i }, ev, def.sprite);
         };
-        div.oncontextmenu = (ev) => {            // clique direito = olhar
-          ev.preventDefault();
-          Net.send({ type: "look_item", slot: i });
-        };
-      } else {
-        div.onclick = () => this.selectSlot(null);
+        div.oncontextmenu = (ev) =>            // direito usa; esq+dir = olhar
+          Input.handleItemRightClick(ev, def, { src: "inv", i },
+                                     { type: "look_item", slot: i });
       }
       grid.appendChild(div);
     }
@@ -755,10 +751,8 @@ const UI = {
         el.onmousedown = (ev) => {
           if (ev.button === 0) Drag.begin({ kind: "equip", eslot }, ev, def.sprite);
         };
-        el.oncontextmenu = (ev) => {             // clique direito = olhar
-          ev.preventDefault();
-          Net.send({ type: "look_item", eslot });
-        };
+        el.oncontextmenu = (ev) =>             // esq+dir = olhar (direito só nada)
+          Input.handleItemRightClick(ev, def, null, { type: "look_item", eslot });
       } else {
         el.onclick = null;
         el.onmousedown = null;
@@ -767,35 +761,15 @@ const UI = {
     });
   },
 
-  selectSlot(i) {
-    this.selectedSlot = i;
-    const actions = this.$("inv-actions");
-    if (i === null || !G.inv.slots[i]) {
-      this.selectedSlot = null;
-      actions.classList.add("hidden");
-    } else {
-      const def = ItemDefs[G.inv.slots[i].id] || {};
-      const equipable = ["weapon", "shield", "helmet", "armor", "legs",
-                         "boots", "necklace", "ring", "ammo", "backpack"]
-        .includes(def.type);
-      const usable = def.type === "potion" || def.type === "food"
-        || def.type === "tool";
-      this.$("btn-use").style.display = usable ? "" : "none";
-      this.$("btn-equip").style.display = equipable ? "" : "none";
-      actions.classList.remove("hidden");
-    }
-    this.renderInventory();
-  },
-
   /** Duplo clique: usa o que é usável, equipa o que é equipável. */
   smartAction(i) {
     const slot = G.inv.slots[i];
     if (!slot) return;
     const def = ItemDefs[slot.id] || {};
+    // duplo-clique NÃO equipa mais (equipar = só arrastando pro slot da mão/corpo).
+    // só usa consumível/ferramenta; arma/armadura/etc. não fazem nada aqui.
     if (def.type === "potion" || def.type === "food" || def.type === "tool") {
       Net.send({ type: "use", slot: i });
-    } else {
-      Net.send({ type: "equip", slot: i });
     }
   },
 
@@ -803,31 +777,11 @@ const UI = {
 
   toggleBag() {
     this.bagClosed = !this.bagClosed;
-    if (this.bagClosed) {
-      this.selectSlot(null);
-      this.$("inv-actions").classList.add("hidden");
-    }
     this.renderInventory();
   },
 
   initInventoryButtons() {
     this.$("inv-close").onclick = () => { this.bagClosed = true; this.renderInventory(); };
-    this.$("btn-use").onclick = () => {
-      if (this.selectedSlot !== null)
-        Net.send({ type: "use", slot: this.selectedSlot });
-    };
-    this.$("btn-equip").onclick = () => {
-      if (this.selectedSlot !== null) {
-        Net.send({ type: "equip", slot: this.selectedSlot });
-        this.selectSlot(null);
-      }
-    };
-    this.$("btn-drop").onclick = () => {
-      if (this.selectedSlot !== null) {
-        Net.send({ type: "drop", slot: this.selectedSlot });
-        this.selectSlot(null);
-      }
-    };
   },
 
   // ------------------------------------------------- minimapa / mapa-múndi
@@ -854,6 +808,11 @@ const UI = {
       const t = Minimap.tileAt(this.$("minimap"), ev.clientX, ev.clientY);
       if (t) Net.send({ type: "walkto", x: t.x, y: t.y });
     });
+    // scroll no minimapa = zoom (pra cima aproxima, pra baixo afasta)
+    this.$("minimap").addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      Minimap.zoom(ev.deltaY < 0 ? 1 : -1);
+    }, { passive: false });
 
     this.$("bigmap").addEventListener("click", (ev) => {
       const big = this.$("bigmap");
@@ -937,8 +896,17 @@ const UI = {
       if (this.tradeTab === "buy") {
         btn.textContent = "Comprar";
         btn.disabled = G.stats && G.stats.gold < row.price;
-        btn.onclick = () => Net.send(
-          { type: "npc_buy", npc: G.trade.npc, item: row.id, count: 1 });
+        btn.onclick = () => {
+          // quantos dá pra pagar (servidor limita a 100 por compra)
+          const gold = (G.stats && G.stats.gold) || 0;
+          const maxAfford = Math.max(1, Math.min(100,
+            row.price > 0 ? Math.floor(gold / row.price) : 100));
+          const buy = n => Net.send(
+            { type: "npc_buy", npc: G.trade.npc, item: row.id, count: n });
+          if (maxAfford <= 1) { buy(1); return; }
+          // seletor de quantidade (igual ao de dropar moedas), começa em 1
+          this.askQuantity(maxAfford, def.sprite, n => { if (n > 0) buy(n); }, 1);
+        };
       } else {
         btn.textContent = "Vender";
         btn.disabled = have < 1;
@@ -948,7 +916,10 @@ const UI = {
             this.chatLine("info", "", "Desequipe o item antes de vender.");
             return;
           }
-          Net.send({ type: "npc_sell", npc: G.trade.npc, item: row.id, count: 1 });
+          const sell = n => Net.send(
+            { type: "npc_sell", npc: G.trade.npc, item: row.id, count: n });
+          if (have <= 1) { sell(1); return; }
+          this.askQuantity(have, def.sprite, n => { if (n > 0) sell(n); }, have);
         };
       }
       div.appendChild(btn);

@@ -35,6 +35,9 @@ SKULL_S = 120               # caveira visível ao agredir jogador (renova a cada
 
 # Respawn: aviso visual (bolinha azul pulsante) N ms antes do monstro nascer
 SPAWN_WARN_MS = 5000
+# Multiplicador global do tempo de respawn das zonas (sobe = nasce mais devagar).
+# 3 = triplica o tempo de cada zona (ratos 45s -> 135s, etc.).
+RESPAWN_MULT = 3
 
 # Itens no chão
 CORPSE_ITEM_ID = 90

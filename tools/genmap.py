@@ -255,14 +255,19 @@ def main():
         portals.append({"from": [sx, sy, 0], "to": [sx, sy + 1, 1]})
         portals.append({"from": [sx, sy, 1], "to": [sx, sy + 1, 0]})
 
-    # buraco (cai ao pisar) + rope spot embaixo (use a corda para subir)
+    # BURACO e ROPE SPOT são PROPRIEDADES DO TILE (não objetos que sobrepõem):
+    # o sprite vai na lista `decos` (desenhada SOB os itens) e o comportamento
+    # (descer / usar corda) vive em holes/ropes — independente do sprite.
     fill_obj(HOLE[0] - 1, HOLE[1] - 1, HOLE[0] + 1, HOLE[1] + 1, O_NONE)
-    objects[HOLE[1]][HOLE[0]] = O_HOLE
-    objects1[HOLE[1]][HOLE[0]] = O_ROPESPOT
     # saída da corda: tile ao sul do buraco, na superfície (sempre limpo)
     objects[HOLE[1] + 1][HOLE[0]] = O_NONE
     holes = [{"from": [HOLE[0], HOLE[1], 0], "to": [HOLE[0], HOLE[1], 1]}]
     ropes = [{"from": [HOLE[0], HOLE[1], 1], "to": [HOLE[0], HOLE[1] + 1, 0]}]
+    # decoração visual dos tiles especiais (sprite apenas; sem colisão/overlap)
+    decos = [
+        {"x": HOLE[0], "y": HOLE[1], "z": 0, "sprite": "hole"},
+        {"x": HOLE[0], "y": HOLE[1], "z": 1, "sprite": "rope_spot"},
+    ]
 
     # ---- clareiras dos spawns (remove vegetação ao redor) --------------------
     # "respawn" em segundos — inclui o aviso de 5s (bolinha azul) antes de nascer
@@ -334,6 +339,8 @@ def main():
             # buracos (queda automática) e rope spots (corda para subir)
             "holes": holes,
             "ropes": ropes,
+            # sprites de tiles especiais (buraco/rope) — desenhados SOB os itens
+            "decos": decos,
         },
         "spawns": spawns,
     }

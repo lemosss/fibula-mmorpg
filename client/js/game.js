@@ -52,6 +52,7 @@ Net.on("welcome", (m) => {
   G.myName = m.name;
   G.admin = m.admin;
   G.map = m.map;
+  Render._decoMap = null;          // remonta o lookup de decos (buraco/rope)
   ItemDefs = m.items || {};
   G.entities.clear();
   G.ground.clear();

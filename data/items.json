@@ -42,5 +42,7 @@
   "72": {"name": "corda",              "sprite": "rope",           "type": "tool", "tool": "rope",    "weight": 31, "priceBuy": 50, "priceSell": 15},
   "73": {"name": "vara de pesca",      "sprite": "fishing_rod",    "type": "tool", "tool": "rod",     "weight": 30, "priceBuy": 80, "priceSell": 25},
 
+  "80": {"name": "bau",                "sprite": "chest",          "type": "misc", "blocking": true, "container": true, "capacity": 8, "weight": 300},
+
   "90": {"name": "corpo",              "sprite": "corpse",         "type": "misc", "pickable": false, "weight": 200, "container": true}
 }

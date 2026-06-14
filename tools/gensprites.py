@@ -869,6 +869,22 @@ def d_rope(s):
     s.rect(25, 18, 2, 4, shade(c, -20))
 
 
+def d_chest(s):
+    # baú de madeira com bandas de ferro e fechadura (item que BLOQUEIA o tile)
+    wood = (140, 95, 50, 255)
+    lid = shade(wood, 22)
+    iron = (66, 66, 76, 255)
+    s.rect(5, 15, 22, 12, wood)                         # corpo
+    s.rect(5, 10, 22, 6, lid)                           # tampa
+    s.rect(5, 15, 22, 2, shade(wood, -40))             # vinco tampa/corpo
+    for bx in (8, 22):                                  # bandas de ferro
+        s.rect(bx, 10, 2, 17, iron)
+    s.rect(5, 10, 22, 2, iron)                          # banda do topo
+    s.rect(14, 17, 4, 5, (228, 190, 52, 255))           # fechadura dourada
+    s.px(16, 19, BLACK)                                 # buraco da chave
+    s.outline(5, 10, 22, 17, shade(wood, -55))          # contorno
+
+
 def d_hole(s):
     # buraco aberto no chão (cai ao pisar)
     s.disc(16, 17, 11, (18, 14, 12, 255))
@@ -918,6 +934,7 @@ SPRITES = [
     ("amulet", d_amulet), ("backpack", d_backpack),
     ("backpack_big", d_backpack_big), ("rope", d_rope),
     ("hole", d_hole), ("rope_spot", d_rope_spot),
+    ("chest", d_chest),
 ]
 
 

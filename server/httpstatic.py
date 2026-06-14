@@ -25,7 +25,11 @@ def _response(status: str, body: bytes, ctype: str = "text/plain") -> bytes:
         f"HTTP/1.1 {status}\r\n"
         f"Content-Type: {ctype}\r\n"
         f"Content-Length: {len(body)}\r\n"
-        "Cache-Control: no-cache\r\n"
+        # no-store: o browser NUNCA guarda — F5 sempre traz o JS/CSS novo
+        # (evita o clássico "corrigi mas o usuário continua vendo o bug")
+        "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"
+        "Pragma: no-cache\r\n"
+        "Expires: 0\r\n"
         "Access-Control-Allow-Origin: *\r\n"   # permite detecção via file://
         "Connection: close\r\n\r\n"
     ).encode() + body

@@ -82,7 +82,7 @@ class Game:
         self.players = {}     # id -> Player
         self.monsters = {}    # id -> Monster
         self.npcs = {}        # id -> Npc
-        self.by_pos = {}      # (x, y, z) -> Creature (ocupação; criaturas bloqueiam)
+        self.by_pos = {}      # (x, y, z) -> [Creature] (lista: empilham em quedas/corda)
         self.respawn_q = []   # heap de (due_ms, seq, zona) -> dispara o AVISO
         self.birth_q = []     # heap de (due_ms, seq, zona, spot) -> nasce de fato
         self._seq = 0
@@ -92,7 +92,7 @@ class Game:
         for name, ndef in data.NPCS.items():
             npc = Npc(name, ndef)
             self.npcs[npc.id] = npc
-            self.by_pos[npc.pos] = npc
+            self._place(npc)
 
         for zone in self.world.spawns:
             for _ in range(zone["count"]):
@@ -104,7 +104,31 @@ class Game:
     # ================================================================ util
 
     def occupied(self, x: int, y: int, z: int) -> bool:
-        return (x, y, z) in self.by_pos
+        # bloqueia CAMINHAR para tiles com qualquer criatura. Quedas/escadas/corda
+        # usam move_creature direto e IGNORAM isto (podem empilhar no mesmo SQM).
+        return bool(self.by_pos.get((x, y, z)))
+
+    def creature_at(self, x: int, y: int, z: int):
+        """Primeira criatura no tile (ou None). by_pos guarda uma LISTA por SQM
+        porque criaturas podem se empilhar temporariamente (corda/queda)."""
+        lst = self.by_pos.get((x, y, z))
+        return lst[0] if lst else None
+
+    def _place(self, e):
+        """Adiciona e na lista de ocupação do tile atual dele (empilha)."""
+        self.by_pos.setdefault(e.pos, [])
+        lst = self.by_pos[e.pos]
+        if e not in lst:
+            lst.append(e)
+
+    def _unplace(self, e, pos=None):
+        """Remove e da lista de ocupação de `pos` (ou do tile atual dele)."""
+        pos = pos if pos is not None else e.pos
+        lst = self.by_pos.get(pos)
+        if lst and e in lst:
+            lst.remove(e)
+            if not lst:
+                del self.by_pos[pos]
 
     def entities(self):
         yield from self.players.values()
@@ -187,13 +211,14 @@ class Game:
     # ============================================================ movimento
 
     def move_creature(self, e, nx: int, ny: int, ndir: str, dur: int, nz=None):
-        """Move/teleporta uma criatura e propaga os eventos de visão."""
-        if self.by_pos.get(e.pos) is e:
-            del self.by_pos[e.pos]
+        """Move/teleporta uma criatura e propaga os eventos de visão.
+        Empilha se o destino já tiver criatura (caller decide se permite isso —
+        o caminhar normal valida `occupied` antes; corda/queda não)."""
+        self._unplace(e)                         # tira do tile atual
         e.x, e.y, e.dir = nx, ny, ndir
         if nz is not None:
             e.z = nz
-        self.by_pos[e.pos] = e
+        self._place(e)                           # adiciona no novo (empilha)
 
         for p in self.players.values():
             if p is e:
@@ -230,24 +255,33 @@ class Game:
             x, y = spot
         self.move_creature(e, x, y, e.dir, 0, z)
 
+    def teleport_exact(self, e, x: int, y: int, z: int):
+        """Coloca `e` EXATAMENTE em (x,y,z) — buracos/escadas/corda têm ponto de
+        entrada/saída FIXO. Se já houver criatura ali, EMPILHA (ocupam o mesmo
+        SQM temporariamente); ao se separarem, o caminhar normal (`occupied`)
+        impede re-empilhar. Cai pro genérico só se o destino for inválido."""
+        if not self.world.walkable(x, y, z):
+            return self.teleport(e, x, y, z)
+        self.move_creature(e, x, y, e.dir, 0, z)   # _place empilha se ocupado
+
     def check_hole(self, p: Player):
         """
-        Pisou num buraco aberto OU no vão de uma escada para BAIXO?
-        Desce automaticamente (subir continua sendo só no clique).
+        DESCER é AUTOMÁTICO ao pisar (igual Tibia): buraco OU escada que desce.
+        SUBIR continua só no clique (use_portal). Tudo vai pro SQM EXATO.
         """
         dest = self.world.holes.get(p.pos)
         if dest is not None:
             p.path = []
             p.pending_stairs = None
-            self.teleport(p, *dest)
+            self.teleport_exact(p, *dest)       # cai no SQM exato do fundo
             self.chat_to(p, "Voce caiu no buraco!")
             self.fx(p.x, p.y, p.z, kind="poff")
             return
         dest = self.world.portals.get(p.pos)
-        if dest is not None and dest[2] > p.z:   # escada que DESCE
+        if dest is not None and dest[2] > p.z:  # escada que DESCE: cai ao pisar
             p.path = []
             p.pending_stairs = None
-            self.teleport(p, *dest)
+            self.teleport_exact(p, *dest)
             self.chat_to(p, "Voce desce as escadas.")
 
     def use_portal(self, p: Player, x: int, y: int):
@@ -258,7 +292,7 @@ class Game:
         p.path = []
         p.pending_stairs = None
         going_down = dest[2] > p.z
-        self.teleport(p, *dest)
+        self.teleport_exact(p, *dest)           # vai pro SQM exato da escada
         self.chat_to(p, "Voce desce as escadas." if going_down
                      else "Voce sobe as escadas.")
 
@@ -640,8 +674,7 @@ class Game:
 
     def kill_monster(self, m: Monster, killer: Player):
         del self.monsters[m.id]
-        if self.by_pos.get(m.pos) is m:
-            del self.by_pos[m.pos]
+        self._unplace(m)
         self.broadcast_despawn(m)
 
         # experiência (número branco no tile do monstro, como no Tibia)
@@ -667,8 +700,10 @@ class Game:
         self.chat_to(killer, f"Loot de {m.name}: {loot_txt}.", "loot")
 
         if m.zone:
-            # o aviso (5s) faz parte do tempo total de respawn
-            delay = max(5000, m.zone["respawn"] * 1000 - config.SPAWN_WARN_MS)
+            # o aviso (5s) faz parte do tempo total de respawn; RESPAWN_MULT
+            # deixa tudo mais lento (estava nascendo rápido/demais)
+            base = m.zone["respawn"] * config.RESPAWN_MULT * 1000
+            delay = max(5000, base - config.SPAWN_WARN_MS)
             self._seq += 1
             heapq.heappush(self.respawn_q, (now + delay, self._seq, m.zone))
 
@@ -814,8 +849,8 @@ class Game:
 
         def crowd(nx, ny):                         # quantos monstros já encostam
             return sum(1 for (dx, dy) in DIRS.values()
-                       if isinstance(self.by_pos.get((nx + dx, ny + dy, m.z)),
-                                     Monster))
+                       if any(isinstance(c, Monster) for c in
+                              self.by_pos.get((nx + dx, ny + dy, m.z), ())))
 
         random.shuffle(cands)                       # desempate natural
         cands.sort(key=lambda c: crowd(c[2], c[3]))  # prefere o lado menos lotado
@@ -968,7 +1003,7 @@ class Game:
             x, y = alt
         m = Monster(zone["monster"], x, y, zone, z)
         self.monsters[m.id] = m
-        self.by_pos[m.pos] = m
+        self._place(m)
         self.broadcast_spawn(m)
 
     # ========================================================== regeneração
@@ -1019,7 +1054,7 @@ class Game:
                 spot, p.z = self.world.temple, 0
             p.x, p.y = spot
         self.players[p.id] = p
-        self.by_pos[p.pos] = p
+        self._place(p)
 
         p.send({"type": "welcome", "id": p.id, "name": p.name,
                 "admin": p.admin, "motd": config.MOTD,
@@ -1040,8 +1075,7 @@ class Game:
             return                              # já saiu (kick + desconexão)
         self.db.save_character(p.char_id, p)
         del self.players[p.id]
-        if self.by_pos.get(p.pos) is p:
-            del self.by_pos[p.pos]
+        self._unplace(p)
         for m in self.monsters.values():
             if m.target_id == p.id:
                 m.target_id = 0
@@ -1104,8 +1138,11 @@ class Game:
             "push": lambda: self.h_push(p, msg),
             "pickup": lambda: self.h_pickup(p, msg),
             "equip": lambda: self.h_equip(p, msg),
+            "equip_move": lambda: self.h_equip_move(p, msg),
             "unequip": lambda: self.h_unequip(p, msg),
             "use": lambda: self.h_use(p, msg),
+            "use_item": lambda: self.h_use_item(p, msg),
+            "use_with": lambda: self.h_use_with(p, msg),
             "drop": lambda: self.h_drop(p, msg),
             "look": lambda: self.h_look(p, msg),
             "npc_buy": lambda: self.h_trade(p, msg, npcs.buy),
@@ -1340,6 +1377,51 @@ class Game:
                 return p.send(p.inv_payload())
         self.chat_to(p, "A mochila esta cheia.")
 
+    def _free_inv_slot(self, p: Player) -> int:
+        for k in range(p.active_slots()):
+            if p.inventory[k] is None:
+                return k
+        return -1
+
+    def _equip_hand(self, p: Player, i: int, item: dict, dest=None):
+        """Equipa um item de MÃO (arma/escudo). `dest` = mão pedida (weapon|shield)
+        quando arrastado p/ um slot específico; senão escolhe uma mão livre. Arma
+        de DUAS mãos (twohand) ocupa as duas. Devolve ao inv o que sair das mãos."""
+        twoh = bool(data.item(item["id"]).get("twohand"))
+        hands = {"weapon": p.equipment.get("weapon"),
+                 "shield": p.equipment.get("shield")}
+        displaced = []
+        if twoh:                                   # ocupa as DUAS mãos
+            displaced = [x for x in hands.values() if x]
+            hands["weapon"], hands["shield"] = item, None
+        else:
+            # tira qualquer arma de 2-mãos das mãos (ela bloqueia a outra)
+            for h in ("weapon", "shield"):
+                if hands[h] and data.item(hands[h]["id"]).get("twohand"):
+                    displaced.append(hands[h])
+                    hands[h] = None
+            # mão de destino: a pedida (se válida), senão uma livre, senão a dir.
+            if dest not in ("weapon", "shield"):
+                dest = ("weapon" if hands["weapon"] is None
+                        else "shield" if hands["shield"] is None else "weapon")
+            if hands[dest]:                        # o que estava nessa mão sai
+                displaced.append(hands[dest])
+            hands[dest] = item
+        p.inventory[i] = None                      # tira o item novo do inv
+        placed = []
+        for d in displaced:                        # devolve os deslocados ao inv
+            k = self._free_inv_slot(p)
+            if k < 0:
+                for kk in placed:
+                    p.inventory[kk] = None
+                p.inventory[i] = item
+                return self.chat_to(p, "Sem espaco para o que esta nas maos.")
+            p.inventory[k] = d
+            placed.append(k)
+        p.equipment["weapon"], p.equipment["shield"] = hands["weapon"], hands["shield"]
+        p.send(p.inv_payload())
+        p.send(p.stats_payload())
+
     def h_equip(self, p: Player, msg):
         i = int(msg.get("slot", -1))
         if not 0 <= i < config.INV_SLOTS or p.inventory[i] is None:
@@ -1349,6 +1431,10 @@ class Game:
         slot = entities.TYPE_TO_SLOT.get(itype)
         if slot is None:
             return self.chat_to(p, "Isso nao e equipavel.")
+        if slot in ("weapon", "shield"):           # item de mão: respeita a mão
+            dest = msg.get("eslot")                # pedida no arraste (se houver)
+            return self._equip_hand(p, i, item,
+                                    dest if dest in ("weapon", "shield") else None)
         if slot == "backpack" and not self._backpack_can_shrink(p, item):
             return self.chat_to(
                 p, "Esvazie os ultimos slots antes de trocar de mochila.")
@@ -1360,6 +1446,24 @@ class Game:
             p.inventory[i] = item
             return self.chat_to(
                 p, "Sem espaco para despejar o conteudo dessa mochila.")
+        p.send(p.inv_payload())
+        p.send(p.stats_payload())
+
+    def h_equip_move(self, p: Player, msg):
+        """Troca um item de uma MÃO para a outra direto (sem passar pela bolsa)."""
+        src, dst = msg.get("from"), msg.get("to")
+        if src not in ("weapon", "shield") or dst not in ("weapon", "shield") \
+                or src == dst:
+            return
+        item = p.equipment.get(src)
+        if item is None:
+            return
+        if data.item(item["id"]).get("twohand"):   # 2-mãos não troca de mão
+            return
+        other = p.equipment.get(dst)
+        if other and data.item(other["id"]).get("twohand"):
+            return
+        p.equipment[src], p.equipment[dst] = other, item   # swap entre as mãos
         p.send(p.inv_payload())
         p.send(p.stats_payload())
 
@@ -1418,6 +1522,106 @@ class Game:
         p.send(p.inv_payload())
         p.send(p.stats_payload())
 
+    def _source_item(self, p: Player, msg):
+        """(item, idef, consume) a partir de uma fonte: inv | container | ground.
+        consume(n) remove n unidades. (None,None,None) se invalido/longe."""
+        src = msg.get("src")
+        if src == "inv":
+            i = int(msg.get("i", -1))
+            if not 0 <= i < config.INV_SLOTS or p.inventory[i] is None:
+                return None, None, None
+            item = p.inventory[i]
+
+            def consume(n):
+                item["count"] -= n
+                if item["count"] <= 0:
+                    p.inventory[i] = None
+                p.send(p.inv_payload())
+                p.send(p.stats_payload())
+            return item, data.item(item["id"]), consume
+        if src == "container":
+            cx, cy = int(msg.get("cx", p.x)), int(msg.get("cy", p.y))
+            idx = int(msg.get("idx", -1))
+            if max(abs(cx - p.x), abs(cy - p.y)) > 1:
+                self.chat_to(p, "Esta longe demais.")
+                return None, None, None
+            corpse = self._top_container(self.world.ground_at(cx, cy, p.z))
+            if corpse is None or not 0 <= idx < len(corpse["contents"]):
+                return None, None, None
+            item = corpse["contents"][idx]
+
+            def consume(n):
+                item["count"] -= n
+                if item["count"] <= 0:
+                    corpse["contents"].pop(idx)
+                self.sync_containers(cx, cy, p.z)
+            return item, data.item(item["id"]), consume
+        if src == "ground":
+            x, y = int(msg.get("x", p.x)), int(msg.get("y", p.y))
+            if max(abs(x - p.x), abs(y - p.y)) > 1:
+                self.chat_to(p, "Esta longe demais.")
+                return None, None, None
+            pile = self.world.ground_at(x, y, p.z)
+            if not pile:
+                return None, None, None
+            item = pile[-1]
+
+            def consume(n):
+                item["count"] -= n
+                if item["count"] <= 0:
+                    pile.pop()
+                    if not pile:
+                        self.world.ground_items.pop((x, y, p.z), None)
+                self.broadcast_ground(x, y, p.z)
+            return item, data.item(item["id"]), consume
+        return None, None, None
+
+    def h_use_item(self, p: Player, msg):
+        """Clique-direito num item de uso IMEDIATO (comida) — onde quer que esteja."""
+        item, idef, consume = self._source_item(p, msg)
+        if item is None:
+            return
+        if idef.get("type") == "food":
+            now = now_ms()
+            base = max(now, p.fed_until)
+            p.fed_until = min(base + idef.get("food_hp", 0) * config.FOOD_MS_PER_HP,
+                              now + config.FOOD_MAX_MS)
+            self.chat_to(p, f"Voce comeu {idef['name']}. Gnam gnam.")
+            consume(1)
+        else:
+            self.chat_to(p, "Nada acontece.")
+
+    def h_use_with(self, p: Player, msg):
+        """Usar-com: poção num jogador (cura) ou corda num buraco/rope spot."""
+        item, idef, consume = self._source_item(p, msg)
+        if item is None:
+            return
+        if idef.get("type") == "potion":
+            target = self.players.get(int(msg.get("tid", 0) or 0))
+            if (target is None or target.z != p.z
+                    or not self.visible(p, target.x, target.y, target.z)):
+                return self.chat_to(p, "Use a pocao em voce ou num jogador visivel.")
+            healed = []
+            if idef.get("heal_hp"):
+                target.hp = min(target.maxhp, target.hp + idef["heal_hp"])
+                healed.append("vida")
+            if idef.get("heal_mp"):
+                target.mp = min(target.maxmp, target.mp + idef["heal_mp"])
+                healed.append("mana")
+            self.fx(target.x, target.y, target.z, kind="heal")
+            self.broadcast_hp(target)
+            target.send(target.stats_payload())
+            who = "voce" if target is p else target.name
+            self.chat_to(p, f"Voce usou {idef['name']} em {who} (+{'/'.join(healed)}).")
+            consume(1)
+        elif idef.get("tool") == "rope":
+            tx, ty = int(msg.get("tx", p.x)), int(msg.get("ty", p.y))
+            if max(abs(tx - p.x), abs(ty - p.y)) > 1:
+                return self.chat_to(p, "Use a corda num buraco do seu lado.")
+            self._rope_use(p, tx, ty)               # corda não consome
+        else:
+            self.chat_to(p, "Nada acontece.")
+
     def _drop_spot(self, p: Player, msg):
         """Valida o tile alvo de um drop/arremesso. Retorna (x, y) ou None."""
         x = int(msg.get("x", p.x))
@@ -1430,6 +1634,23 @@ class Game:
             return None
         return x, y
 
+    def _ground_drop(self, x, y, z, item):
+        """Coloca `item` no chão de (x,y,z). Se (x,y,z) for um BURACO DE DESCIDA,
+        o item CAI para o andar de baixo (igual a um jogador descendo). Faz o
+        broadcast/sync do(s) tile(s) afetado(s). Retorna (x,y,z) onde parou."""
+        dest = self.world.holes.get((x, y, z))
+        if dest is None:                           # escada que desce também derruba
+            pd = self.world.portals.get((x, y, z))
+            if pd is not None and pd[2] > z:
+                dest = pd
+        if dest is not None:                       # buraco/escada: o item cai
+            self.fx(x, y, z, kind="poff")
+            x, y, z = tuple(dest)
+        self.world.ground_items.setdefault((x, y, z), []).append(item)
+        self.broadcast_ground(x, y, z)
+        self.sync_containers(x, y, z)
+        return x, y, z
+
     def h_drop(self, p: Player, msg):
         i = int(msg.get("slot", -1))
         if not 0 <= i < config.INV_SLOTS or p.inventory[i] is None:
@@ -1437,13 +1658,10 @@ class Game:
         spot = self._drop_spot(p, msg)
         if spot is None:
             return
-        # tira a quantidade pedida (divide pilha) ou o objeto inteiro
+        # tira a quantidade pedida (divide pilha) ou o objeto inteiro.
+        # SEM decay: item largado fica no chão até o Server Save (só corpo some).
         dropped = self._take_from_slot(p, i, msg.get("count"))
-        dropped["decay"] = now_ms() + config.LOOT_DECAY_S * 1000
-        self.world.ground_items.setdefault((spot[0], spot[1], p.z),
-                                           []).append(dropped)
-        self.broadcast_ground(spot[0], spot[1], p.z)
-        self.sync_containers(spot[0], spot[1], p.z)
+        self._ground_drop(spot[0], spot[1], p.z, dropped)   # cai se for buraco
         p.send(p.inv_payload())
         p.send(p.stats_payload())
 
@@ -1460,8 +1678,7 @@ class Game:
         if spot is None:
             return
         p.equipment[eslot] = None
-        dropped = {"id": item["id"], "count": item["count"],
-                   "decay": now_ms() + config.LOOT_DECAY_S * 1000}
+        dropped = {"id": item["id"], "count": item["count"]}   # sem decay
         if eslot == "backpack":
             # empacota os itens dos slots extras dentro da mochila dropada
             contents = []
@@ -1472,10 +1689,7 @@ class Game:
             if contents:
                 dropped["contents"] = contents
                 dropped["name"] = data.item_name(item["id"])
-        self.world.ground_items.setdefault((spot[0], spot[1], p.z),
-                                           []).append(dropped)
-        self.broadcast_ground(spot[0], spot[1], p.z)
-        self.sync_containers(spot[0], spot[1], p.z)
+        self._ground_drop(spot[0], spot[1], p.z, dropped)   # cai se for buraco
         p.send(p.inv_payload())
         p.send(p.stats_payload())
 
@@ -1530,7 +1744,10 @@ class Game:
             idef = data.item(it["id"])
             if idef.get("pickable", True) is False:
                 continue
-            if entities.TYPE_TO_SLOT.get(idef.get("type")) != eslot:
+            tslot = entities.TYPE_TO_SLOT.get(idef.get("type"))
+            # arma/escudo entram em QUALQUER mão (weapon OU shield)
+            hand = tslot in ("weapon", "shield") and eslot in ("weapon", "shield")
+            if not hand and tslot != eslot:
                 return self.chat_to(p, "Isso nao equipa nesse slot.")
             if not p.can_carry_weight(entities.Player.item_weight(it)):
                 return self.chat_to(p, "Voce nao tem capacidade suficiente (peso).")
@@ -1580,11 +1797,9 @@ class Game:
             it = pile.pop()
             if not pile:
                 self.world.ground_items.pop((fx, fy, p.z), None)
-        self.world.ground_items.setdefault((tx, ty, p.z), []).append(it)
         self.broadcast_ground(fx, fy, p.z)
-        self.broadcast_ground(tx, ty, p.z)
         self.sync_containers(fx, fy, p.z)
-        self.sync_containers(tx, ty, p.z)
+        self._ground_drop(tx, ty, p.z, it)          # cai se o destino for buraco
 
     def h_store(self, p: Player, msg):
         """Guarda um item da mochila DENTRO de um container aberto (corpo/
@@ -1769,9 +1984,8 @@ class Game:
         if corpse is None or not 0 <= idx < len(corpse["contents"]):
             return
         ground_item = self._take_from_container(corpse, idx, msg.get("count"))
-        ground_item["decay"] = now_ms() + config.LOOT_DECAY_S * 1000
-        self.world.ground_items.setdefault((tx, ty, p.z), []).append(ground_item)
-        self.broadcast_ground(tx, ty, p.z)
+        ground_item.pop("decay", None)                 # item no chão não some sozinho
+        self._ground_drop(tx, ty, p.z, ground_item)    # cai se o destino for buraco
         self.sync_containers(cx, cy, p.z)
 
     def h_loot_to(self, p: Player, msg):
@@ -1824,15 +2038,73 @@ class Game:
 
     # ======================================================= corda / pesca
 
+    def _rope_target(self, pos):
+        """Dado um tile (buraco OU escada que desce), devolve (below, exit) p/ a
+        corda PUXAR, ou None. `below` = o SQM logo abaixo de onde puxar (buraco
+        usa seu destino; escada usa o SQM DIRETAMENTE abaixo). `exit` = onde o
+        puxado POUSA: o MESMO tile onde alguém que SOBE daquele SQM de baixo
+        aparece (rope spot -> world.ropes; escada-up -> world.portals). Nunca é o
+        tile de queda de cima (que é no-monster)."""
+        if pos in self.world.holes:
+            below = tuple(self.world.holes[pos])
+        else:
+            d = self.world.portals.get(pos)
+            if d is None or d[2] <= pos[2]:
+                return None
+            below = (pos[0], pos[1], pos[2] + 1)        # diretamente abaixo
+        exit_to = self.world.ropes.get(below) or self.world.portals.get(below)
+        return (below, tuple(exit_to)) if exit_to else None
+
     def use_rope(self, p: Player):
-        """Usa a corda num rope spot (no tile ou adjacente) para subir."""
+        """Corda sem alvo: acha um rope spot / buraco / escada no tile ou adjacente."""
         for dx, dy in ((0, 0), (0, -1), (0, 1), (-1, 0), (1, 0)):
-            dest = self.world.ropes.get((p.x + dx, p.y + dy, p.z))
-            if dest:
-                p.path = []
-                self.teleport(p, *dest)
-                return self.chat_to(p, "Voce sobe pela corda.")
+            pos = (p.x + dx, p.y + dy, p.z)
+            if pos in self.world.ropes or self._rope_target(pos):
+                return self._rope_use(p, p.x + dx, p.y + dy)
         self.chat_to(p, "Nao ha onde usar a corda aqui.")
+
+    def _rope_use(self, p: Player, tx: int, ty: int):
+        """Usa a corda no tile (tx,ty) conforme o ATRIBUTO do tile:
+          - rope spot  -> o próprio jogador sobe (NÃO vale em escada);
+          - buraco/escada-que-desce -> PUXA do SQM de baixo (itens -> jogador ->
+            criatura), um por uso da corda, pousando na saída."""
+        pos = (tx, ty, p.z)
+        if pos in self.world.ropes:                 # rope spot: sobe você mesmo
+            p.path = []
+            self.teleport_exact(p, *self.world.ropes[pos])
+            return self.chat_to(p, "Voce sobe pela corda.")
+        tgt = self._rope_target(pos)                # buraco ou escada: puxa de baixo
+        if tgt:
+            return self._rope_pull_up(p, tgt[0], tgt[1])
+        self.chat_to(p, "Nao ha onde usar a corda ai.")
+
+    def _rope_pull_up(self, p: Player, below, exit_to):
+        """Puxa UM ente do SQM `below`: itens primeiro (um por uso), depois o
+        jogador/criatura que ocupa o tile. Monstros precisam de `ropeable`.
+        TUDO pousa em `exit_to` (saída fixa), nunca aos pés do puxador."""
+        bx, by, bz = below
+        ex, ey, ez = exit_to
+        pile = self.world.ground_at(bx, by, bz)
+        if pile:                                    # 1) ITENS (um por uso)
+            item = pile.pop()
+            if not pile:
+                self.world.ground_items.pop((bx, by, bz), None)
+            self.world.ground_items.setdefault((ex, ey, ez), []).append(item)
+            self.broadcast_ground(bx, by, bz)
+            self.broadcast_ground(ex, ey, ez)
+            self.sync_containers(bx, by, bz)
+            self.fx(ex, ey, ez, kind="poff")
+            return self.chat_to(p, f"Voce puxa {data.item_name(item['id'])} "
+                                   "pela corda.")
+        occ = self.creature_at(bx, by, bz)          # 2) JOGADOR / 3) CRIATURA
+        if occ is not None and (isinstance(occ, Player)
+                                or getattr(occ, "ropeable", True)):
+            if hasattr(occ, "path"):
+                occ.path = []
+            self.teleport_exact(occ, ex, ey, ez)    # SQM de saída exato
+            self.fx(occ.x, occ.y, occ.z, kind="poff")
+            return self.chat_to(p, f"Voce puxa {occ.name} pela corda.")
+        self.chat_to(p, "Nao ha nada para puxar.")
 
     def use_rod(self, p: Player, now: float):
         """Pesca: precisa de água adjacente. Treina a skill de pesca."""
@@ -1930,7 +2202,7 @@ class Game:
         x, y = int(msg.get("x", p.x)), int(msg.get("y", p.y))
         if not self.visible(p, x, y, p.z):
             return
-        e = self.by_pos.get((x, y, p.z))
+        e = self.creature_at(x, y, p.z)
         if isinstance(e, Player):
             voc = formulas.VOCATIONS[e.vocation]["name"]
             text = f"Voce ve {e.name} ({voc}, Level {e.level})."
@@ -2063,7 +2335,7 @@ class Game:
                 if spot:
                     m = Monster(name, spot[0], spot[1], z=p.z)
                     self.monsters[m.id] = m
-                    self.by_pos[m.pos] = m
+                    self._place(m)
                     self.broadcast_spawn(m)
             return
         if cmd == "/item" and len(parts) >= 2:
